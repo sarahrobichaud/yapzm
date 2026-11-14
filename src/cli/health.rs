@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use crate::{GameClient, cli::{plural, print_header}, steam::SteamClient};
+use crate::{cli::{plural, print_header}, steam::SteamClient};
 
 /// Clients detected on this machine, absent when not installed.
 struct Clients {
@@ -27,11 +27,11 @@ pub fn run(is_verbose: bool) -> Result<()> {
     Ok(())
 }
 
-/// Prints one client's status, with root and library paths when verbose.
-fn print_client(client: &impl GameClient, is_verbose: bool) {
-    let paths = client.paths();
+/// Prints the client's status, with root and library paths when verbose.
+fn print_client(client: &SteamClient, is_verbose: bool) {
+    let paths = &client.paths;
     if is_verbose {
-        println!("[x] {}:", client.name());
+        println!("[x] Steam:");
         println!("    Root: {}", paths.root.display());
 
         if !paths.libraries.is_empty() {
@@ -41,6 +41,6 @@ fn print_client(client: &impl GameClient, is_verbose: bool) {
             }
         }
     } else {
-        println!("[x] {} - {} {}", client.name(), paths.libraries.len(), plural(paths.libraries.len(), "library", "libraries"))
+        println!("[x] Steam - {} {}", paths.libraries.len(), plural(paths.libraries.len(), "library", "libraries"))
     }
 }

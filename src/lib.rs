@@ -12,12 +12,3 @@ pub struct ClientPaths {
     pub root: PathBuf,
     pub libraries: Vec<PathBuf>,
 }
-
-pub trait GameClient {
-    fn detect() -> Option<Self>
-    where
-        Self: Sized;
-
-    fn name(&self) -> &str;
-    fn paths(&self) -> &ClientPaths;
-}

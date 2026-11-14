@@ -1,16 +1,16 @@
-//! Steam client implementation of the game client interface.
+//! The detected Steam client and its libraries.
 
 use super::libraries;
-use crate::{ClientPaths, GameClient, platform};
+use crate::{ClientPaths, platform};
 
-/// The Steam game client
+/// The Steam game client.
 pub struct SteamClient {
     pub paths: ClientPaths,
 }
 
-impl GameClient for SteamClient {
+impl SteamClient {
     /// Detects the Steam install, requiring a readable library index.
-    fn detect() -> Option<Self> {
+    pub fn detect() -> Option<Self> {
         let install = platform::locate_steam().ok()??;
         let libraries = libraries::load(&install.root);
 
@@ -24,15 +24,5 @@ impl GameClient for SteamClient {
                 libraries,
             },
         })
-    }
-
-    /// The client's display name.
-    fn name(&self) -> &str {
-        "Steam"
-    }
-
-    /// The paths belonging to this client.
-    fn paths(&self) -> &ClientPaths {
-        &self.paths
     }
 }
