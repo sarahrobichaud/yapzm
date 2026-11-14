@@ -1,0 +1,10 @@
+{
+	"name": "yapzm",
+	"private": true,
+	"packageManager": "pnpm@12.3.4",
+	"scripts": {
+		"docs:dev": "pnpm --filter yapzm-docs dev",
+		"docs:build": "pnpm --filter yapzm-docs build",
+		"docs:preview": "pnpm --filter yapzm-docs preview"
+	}
+}
