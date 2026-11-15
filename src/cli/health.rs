@@ -26,7 +26,11 @@ pub fn run(is_verbose: bool) -> Result<()> {
         steam: SteamClient::detect(),
     };
 
-    print_header("Component Health Check");
+    if is_verbose {
+        print_header("Component Health Check (detailed)");
+    } else {
+        print_header("Component Health Check");
+    }
     print_clients(&clients, is_verbose);
     print_workshop(&clients, is_verbose);
     print_installs(&detect_installs(&clients), is_verbose);
