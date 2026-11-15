@@ -10,12 +10,23 @@ export default defineConfig({
 			description: 'Yet another Project Zomboid Manager',
 			favicon: '/favicon.svg',
 			sidebar: [
-				{ label: 'About', slug: 'about' },
-				{ label: 'Installation', slug: 'installation' },
-				{ label: 'Configuration', slug: 'reference/configuration' },
 				{
-					label: 'Clients',
-					items: [{ label: 'CLI', slug: 'reference/cli' }],
+					label: 'Getting started',
+					items: [
+						{ label: 'About', slug: 'about' },
+						{ label: 'Installation', slug: 'installation' },
+					],
+				},
+				{
+					label: 'Development',
+					items: [{ label: 'Roadmap', slug: 'development/roadmap' }],
+				},
+				{
+					label: 'Reference',
+					items: [
+						{ label: 'Configuration', slug: 'reference/configuration' },
+						{ label: 'CLI', slug: 'reference/cli' },
+					],
 				},
 			],
 		}),

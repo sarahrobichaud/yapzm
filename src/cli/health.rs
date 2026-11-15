@@ -115,7 +115,7 @@ fn print_workshop(clients: &Clients, is_verbose: bool) {
         }
         (None, _) => println!("[ ] Steam Workshop - install Steam"),
         (Some(_), None) => println!(
-            "[ ] Steam Workshop - subscribe to a workshop item to enable workshop integration"
+            "[ ] Steam Workshop - install the game and subscribe to a workshop item to enable workshop integration"
         ),
     }
     println!();

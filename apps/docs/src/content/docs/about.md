@@ -11,25 +11,19 @@ The primary goal: never experience a broken save or an unplayable game ever agai
 
 YAPZM lets you manage multiple versions of the game at the same time, and multiple instances that are completely isolated from one another. Everything is static and non-moving, so you don't need to worry about updates messing things up or corrupting saves.
 
-## Supported game clients
+## Compatibility
 
-YAPZM supports Steam, with GOG support planned.
+| Platform | Support |
+| -------- | ------- |
+| Windows  | Yes     |
+| macOS    | Planned |
+| Linux    | Planned |
 
-## Beta checklist
-
-What YAPZM needs before entering beta:
-
-- [x] Detect Steam game installs
-- [ ] Install Steam CMD with one command
-- [ ] Steam CMD authentication
-- [ ] Steam Workshop modding integration
-- [ ] Manage multiple versions of the game at the same time.
-- [ ] Run multiple instances that are completely isolated from one another.
-- [ ] Manage and share modpacks
+YAPZM only works with the Steam version of Project Zomboid. GOG and other versions are not supported.
 
 ## Status
 
-YAPZM is in early development. A client with a user interface is planned for the future.
+YAPZM is in early development, see the [roadmap](/development/roadmap/) for what remains before beta. A client with a user interface is planned for the future.
 
 ## AI disclosure
 
