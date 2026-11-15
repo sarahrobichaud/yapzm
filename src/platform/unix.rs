@@ -5,10 +5,10 @@ use super::{SteamInstall, SteamKind, validate};
 
 /// Locates Steam via the configured override, then the paths Steam occupies by default.
 pub fn locate_steam() -> io::Result<Option<SteamInstall>> {
-    if let Some(root) = crate::config::steam_dir() {
-        if let Some(install) = validate(&root, classify(&root)) {
-            return Ok(Some(install));
-        }
+    if let Some(root) = crate::config::steam_dir()
+        && let Some(install) = validate(&root, classify(&root))
+    {
+        return Ok(Some(install));
     }
     for root in candidate_roots() {
         if let Some(install) = validate(&root, classify(&root)) {

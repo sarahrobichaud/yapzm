@@ -26,10 +26,10 @@ pub(super) fn locate_windows_steam() -> Option<SteamInstall> {
     if let Some(install) = override_root().and_then(|root| validate(&root, SteamKind::Native)) {
         return Some(install);
     }
-    if let Some(root) = registry_root() {
-        if let Some(install) = validate(&root, SteamKind::Native) {
-            return Some(install);
-        }
+    if let Some(root) = registry_root()
+        && let Some(install) = validate(&root, SteamKind::Native)
+    {
+        return Some(install);
     }
     for root in c_drive_candidates() {
         if let Some(install) = validate(&root, SteamKind::Native) {
@@ -89,12 +89,13 @@ fn parse_automount_root(conf: &str) -> PathBuf {
         let line = line.trim();
         if line.starts_with('[') {
             in_automount = line.eq_ignore_ascii_case("[automount]");
-        } else if in_automount {
-            if let Some(value) = line.split_once('=').filter(|(key, _)| key.trim() == "root") {
-                let value = value.1.trim().trim_matches('"');
-                if !value.is_empty() {
-                    return PathBuf::from(value);
-                }
+        } else if in_automount
+            && let Some((key, value)) = line.split_once('=')
+            && key.trim() == "root"
+        {
+            let value = value.trim().trim_matches('"');
+            if !value.is_empty() {
+                return PathBuf::from(value);
             }
         }
     }

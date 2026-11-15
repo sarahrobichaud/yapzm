@@ -35,11 +35,11 @@ pub fn run() -> Result<()> {
 }
 
 pub(crate) fn print_header(title: &str) {
-    println!("");
+    println!();
     println!("------------------------------");
     println!("YAPZM - {}", title);
     println!("------------------------------");
-    println!("");
+    println!();
 }
 
 pub(crate) fn plural<'a>(count: usize, singular: &'a str, plural: &'a str) -> &'a str {

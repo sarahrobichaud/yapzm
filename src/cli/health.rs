@@ -29,7 +29,7 @@ pub fn run(is_verbose: bool) -> Result<()> {
     print_header("Health Check");
 
     println!("Detected Clients:");
-    println!("");
+    println!();
 
     let mut detected: Vec<(String, Install)> = Vec::new();
 
@@ -59,11 +59,11 @@ pub fn run(is_verbose: bool) -> Result<()> {
         })
         .collect();
 
-    println!("");
+    println!();
     println!("------------------");
-    println!("");
+    println!();
     println!("Detected Game Installs:");
-    println!("");
+    println!();
 
     if installs.is_empty() {
         println!("[ ] Project Zomboid - not detected");
@@ -76,7 +76,7 @@ pub fn run(is_verbose: bool) -> Result<()> {
             print_details(install, is_verbose);
         }
     }
-    println!("");
+    println!();
 
     Ok(())
 }

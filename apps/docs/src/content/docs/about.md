@@ -15,7 +15,7 @@ YAPZM lets you manage multiple versions of the game at the same time, and multip
 
 What YAPZM needs before entering beta:
 
-- [x] Detect the Steam client and its libraries.
+- [x] Detect Steam game installs
 - [ ] Install Steam CMD with one command
 - [ ] Steam CMD authentication
 - [ ] Steam Workshop modding integration

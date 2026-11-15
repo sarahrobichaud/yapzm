@@ -111,7 +111,7 @@ mod tests {
         )
         .unwrap();
 
-        let install = Install::detect_steam(&[library.clone()]).unwrap();
+        let install = Install::detect_steam(std::slice::from_ref(&library)).unwrap();
         assert_eq!(
             install.path,
             steamapps.join("common").join("ProjectZomboid")
