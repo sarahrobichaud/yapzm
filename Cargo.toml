@@ -28,10 +28,10 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+dirs.workspace = true
 thiserror.workspace = true
+ureq.workspace = true
+zip.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56.0"
-
-[target.'cfg(unix)'.dependencies]
-dirs.workspace = true

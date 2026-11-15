@@ -1029,7 +1029,9 @@ dependencies = [
  "clap",
  "dirs",
  "thiserror",
+ "ureq",
  "winreg",
+ "zip",
 ]
 
 [[package]]

@@ -4,6 +4,10 @@ use std::path::PathBuf;
 
 use crate::{config, platform};
 
+mod install;
+
+pub use install::install;
+
 /// Locates steamcmd, using only the configured override when it is set.
 pub fn locate() -> Option<PathBuf> {
     if let Some(path) = config::steamcmd() {

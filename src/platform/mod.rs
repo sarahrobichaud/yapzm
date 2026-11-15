@@ -71,6 +71,18 @@ pub fn translate_windows_path(path: &Path) -> PathBuf {
     }
 }
 
+/// Reports whether this process runs inside WSL.
+pub fn is_wsl() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        wsl::is_wsl()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
 /// Searches `PATH` for an executable name, returning the first file match.
 pub(crate) fn path_lookup(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
