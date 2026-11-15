@@ -1,4 +1,4 @@
-//! Health check command reporting detected game clients and install details.
+//! Health check command reporting detected clients, installs, and workshop content.
 
 use anyhow::Result;
 
@@ -20,34 +20,43 @@ struct InstallSource {
     version: Result<GameVersion, VersionError>,
 }
 
-/// Runs the health check, reporting clients and the details of each install.
+/// Runs the health check, reporting clients, installs, and workshop content.
 pub fn run(is_verbose: bool) -> Result<()> {
     let clients = Clients {
         steam: SteamClient::detect(),
     };
 
-    print_header("Health Check");
+    print_header("Component Health Check");
+    print_clients(&clients, is_verbose);
+    print_workshop(&clients, is_verbose);
+    print_installs(&detect_installs(&clients), is_verbose);
 
+    Ok(())
+}
+
+/// Prints each detected game client, or its absence.
+fn print_clients(clients: &Clients, is_verbose: bool) {
     println!("Detected Clients:");
     println!();
 
-    let mut detected: Vec<(String, Install)> = Vec::new();
-
     match &clients.steam {
-        Some(steam) => {
-            print_client(steam, is_verbose);
-
-            if let Some(install) =
-                zomboid::Install::detect_steam(steam.game_install_location_candidates())
-            {
-                detected.push(("Steam".to_owned(), install));
-            }
-        }
+        Some(steam) => print_client(steam, is_verbose),
         None => println!("[ ] Steam - not detected"),
     }
+    println!();
+}
 
-    // Every version is probed up front so the install section prints without pauses.
-    let installs: Vec<InstallSource> = detected
+/// Detects installs through each client, probing versions up front so printing never pauses.
+fn detect_installs(clients: &Clients) -> Vec<InstallSource> {
+    let mut detected: Vec<(String, Install)> = Vec::new();
+
+    if let Some(steam) = &clients.steam {
+        if let Some(install) = zomboid::Install::detect_steam(steam.libraries()) {
+            detected.push(("Steam".to_owned(), install));
+        }
+    }
+
+    detected
         .into_iter()
         .map(|(source, install)| {
             let version = zomboid::version::detect(&install.path);
@@ -57,18 +66,20 @@ pub fn run(is_verbose: bool) -> Result<()> {
                 version,
             }
         })
-        .collect();
+        .collect()
+}
 
-    println!();
+/// Prints each detected install with its status and version.
+fn print_installs(installs: &[InstallSource], is_verbose: bool) {
     println!("------------------");
     println!();
-    println!("Detected Game Installs:");
+    println!("Detected External Game Installs:");
     println!();
 
     if installs.is_empty() {
         println!("[ ] Project Zomboid - not detected");
     } else {
-        for install in &installs {
+        for install in installs {
             println!("[x] Project Zomboid - from {}", install.source);
             if is_verbose {
                 println!("    Location: {}", install.details.path.display());
@@ -77,8 +88,53 @@ pub fn run(is_verbose: bool) -> Result<()> {
         }
     }
     println!();
+}
 
-    Ok(())
+/// Prints the workshop content, with guidance when it cannot be detected.
+fn print_workshop(clients: &Clients, is_verbose: bool) {
+    let workshop = clients
+        .steam
+        .as_ref()
+        .and_then(|steam| zomboid::Workshop::detect_steam(steam.libraries()));
+
+    println!("------------------");
+    println!();
+    println!("Steam Workshop Integration Status:");
+    println!();
+
+    match (&clients.steam, &workshop) {
+        (Some(_), Some(workshop)) => {
+            println!("[x] Steam Workshop - Enabled");
+            if is_verbose {
+                println!("    Location: {}", workshop.path.display());
+            }
+        }
+        (None, _) => println!("[ ] Steam Workshop - install Steam"),
+        (Some(_), None) => println!(
+            "[ ] Steam Workshop - subscribe to a workshop item to enable workshop integration"
+        ),
+    }
+    println!();
+}
+
+/// Prints the client's status and, in verbose mode, its library roots.
+fn print_client(client: &SteamClient, is_verbose: bool) {
+    let libraries = client.libraries();
+    if is_verbose {
+        println!("[x] Steam:");
+        if !libraries.is_empty() {
+            println!("    Looking for install inside:");
+            for lib in libraries {
+                println!("  - {}", lib.display());
+            }
+        }
+    } else {
+        println!(
+            "[x] Steam - {} {}",
+            libraries.len(),
+            plural(libraries.len(), "library", "libraries")
+        )
+    }
 }
 
 /// Prints the file status and, when the install is valid, its game version.
@@ -120,25 +176,5 @@ fn describe_version(version: &Result<GameVersion, VersionError>, is_verbose: boo
         )
     } else {
         game_version.version.clone()
-    }
-}
-
-/// Prints the client's status
-fn print_client(client: &SteamClient, is_verbose: bool) {
-    let candidates = client.game_install_location_candidates();
-    if is_verbose {
-        println!("[x] Steam:");
-        if !candidates.is_empty() {
-            println!("    Looking for install inside:");
-            for lib in candidates {
-                println!("  - {}", lib.display());
-            }
-        }
-    } else {
-        println!(
-            "[x] Steam - {} {}",
-            candidates.len(),
-            plural(candidates.len(), "library", "libraries")
-        )
     }
 }

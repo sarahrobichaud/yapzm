@@ -26,7 +26,8 @@ impl SteamClient {
         Some(Self { libraries })
     }
 
-    pub fn game_install_location_candidates(&self) -> &[PathBuf] {
+    /// The library roots to search for game content.
+    pub fn libraries(&self) -> &[PathBuf] {
         &self.libraries
     }
 }

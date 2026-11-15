@@ -30,7 +30,7 @@ impl Install {
     /// Detects the install on this machine through the local Steam client.
     pub fn detect() -> Option<Self> {
         let steam = SteamClient::detect()?;
-        Self::detect_steam(steam.game_install_location_candidates())
+        Self::detect_steam(steam.libraries())
     }
 
     /// Finds the first Steam library holding a Project Zomboid install.
