@@ -1,6 +1,6 @@
 //! Minimal parser for Valve's text key-value format.
 
-use std::fmt;
+use thiserror::Error;
 
 /// A parsed VDF value: a string or a table of key-value pairs.
 #[derive(Debug, PartialEq)]
@@ -36,19 +36,12 @@ impl Value {
 }
 
 /// A VDF parse failure, located by line number.
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("line {line}: {message}")]
 pub struct ParseError {
     pub line: usize,
     pub message: String,
 }
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "line {}: {}", self.line, self.message)
-    }
-}
-
-impl std::error::Error for ParseError {}
 
 /// Parses a whole document into its top-level key-value pairs.
 pub fn parse(input: &str) -> Result<Value, ParseError> {
