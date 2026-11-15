@@ -34,12 +34,20 @@ pub fn run() -> Result<()> {
     }
 }
 
+/// The width of the separator lines dividing output sections.
+const SEPARATOR_WIDTH: usize = 60;
+
 pub(crate) fn print_header(title: &str) {
     println!();
-    println!("------------------------------");
+    print_separator();
     println!("YAPZM - {}", title);
-    println!("------------------------------");
+    print_separator();
     println!();
+}
+
+/// Prints a horizontal separator line dividing output sections.
+pub(crate) fn print_separator() {
+    println!("{}", "-".repeat(SEPARATOR_WIDTH));
 }
 
 pub(crate) fn plural<'a>(count: usize, singular: &'a str, plural: &'a str) -> &'a str {

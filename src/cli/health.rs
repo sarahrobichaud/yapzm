@@ -3,7 +3,7 @@
 use anyhow::Result;
 
 use crate::{
-    cli::{plural, print_header},
+    cli::{plural, print_header, print_separator},
     steam::SteamClient,
     zomboid::{self, GameVersion, Install, VersionError},
 };
@@ -71,7 +71,7 @@ fn detect_installs(clients: &Clients) -> Vec<InstallSource> {
 
 /// Prints each detected install with its status and version.
 fn print_installs(installs: &[InstallSource], is_verbose: bool) {
-    println!("------------------");
+    print_separator();
     println!();
     println!("Detected External Game Installs:");
     println!();
@@ -97,7 +97,7 @@ fn print_workshop(clients: &Clients, is_verbose: bool) {
         .as_ref()
         .and_then(|steam| zomboid::Workshop::detect_steam(steam.libraries()));
 
-    println!("------------------");
+    print_separator();
     println!();
     println!("Steam Workshop Integration Status:");
     println!();
