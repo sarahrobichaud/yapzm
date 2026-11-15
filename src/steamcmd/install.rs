@@ -4,103 +4,181 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::{Context as _, Result, bail};
-
 use super::locate;
-use crate::platform;
+use crate::{platform, registry};
 
 /// How long the whole download may take; the zip is small but links can be slow.
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// The official Windows steamcmd distribution, the build Windows and WSL both run.
-const STEAMCMD_WINDOWS_URL: &str = "https://client-update.steamstatic.com/installer/steamcmd.zip";
+/// The ways a steamcmd installation can fail.
+#[derive(Debug, thiserror::Error)]
+pub enum InstallError {
+    /// steamcmd was detected and no explicit target was requested.
+    #[error("steamcmd is already installed at {path}; nothing to do")]
+    AlreadyInstalled { path: PathBuf },
 
-/// The SteamCMD guide, which covers manual installation on other platforms.
-const STEAMCMD_DOCS: &str = "https://developer.valvesoftware.com/wiki/SteamCMD#_Linux";
+    /// This platform has no automatic steamcmd installation.
+    #[error(
+        "steamcmd installation is only supported on Windows; on Linux, follow \
+         https://developer.valvesoftware.com/wiki/SteamCMD#_Linux and install \
+         yapzm alongside steamcmd"
+    )]
+    UnsupportedPlatform,
+
+    /// The registry could not be loaded.
+    #[error("could not load the registry")]
+    Registry {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// The registry lists no steamcmd package to trust.
+    #[error("the registry does not list a steamcmd package")]
+    PackageNotListed,
+
+    /// The download failed.
+    #[error("downloading {url}")]
+    Download {
+        url: String,
+        #[source]
+        source: ureq::Error,
+    },
+
+    /// The downloaded archive does not match the checksum the registry vouches for.
+    #[error(
+        "the downloaded steamcmd.zip does not match the checksum in the registry: \
+         got {got}, expected {expected}; refusing to install it"
+    )]
+    ChecksumMismatch { got: String, expected: String },
+
+    /// The archive could not be read.
+    #[error("reading steamcmd.zip")]
+    Archive {
+        #[source]
+        source: zip::result::ZipError,
+    },
+
+    /// A directory or file could not be written.
+    #[error("writing {path}")]
+    Write {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// An archive entry path escapes the target directory.
+    #[error("the archive contains an unsafe path: {name}")]
+    UnsafeEntryPath { name: String },
+}
 
 /// Installs steamcmd and returns the path of the installed executable.
-pub fn install(to: Option<&Path>) -> Result<PathBuf> {
+pub fn install(to: Option<&Path>) -> Result<PathBuf, InstallError> {
     if to.is_none()
         && let Some(existing) = locate()
     {
-        bail!(
-            "steamcmd is already installed at {}; nothing to do",
-            existing.display()
-        );
+        return Err(InstallError::AlreadyInstalled { path: existing });
     }
     if !cfg!(windows) && !platform::is_wsl() {
-        bail!(
-            "steamcmd installation is only supported on Windows; on Linux, \
-             follow {STEAMCMD_DOCS} and install yapzm alongside steamcmd"
-        );
+        return Err(InstallError::UnsupportedPlatform);
     }
+
+    let package = registry::load()
+        .map_err(|error| InstallError::Registry { source: error.into() })?
+        .steamcmd
+        .ok_or(InstallError::PackageNotListed)?;
 
     let target = match to {
         Some(dir) => dir.to_path_buf(),
-        None => default_target()?,
+        None => default_target(),
     };
 
-    let archive = download()?;
+    let archive = download(&package.url)?;
+    verify(&archive, &package.sha256)?;
     extract(&archive, &target)?;
     Ok(target.join("steamcmd.exe"))
 }
 
 /// Picks the default install directory; only reached on Windows or WSL.
-fn default_target() -> Result<PathBuf> {
+fn default_target() -> PathBuf {
     if platform::is_wsl() {
-        return Ok(PathBuf::from("/mnt/c/steamcmd"));
+        return PathBuf::from("/mnt/c/steamcmd");
     }
-    Ok(PathBuf::from(r"C:\steamcmd"))
+    PathBuf::from(r"C:\steamcmd")
 }
 
 /// Downloads the steamcmd distribution to install.
-fn download() -> Result<Vec<u8>> {
+fn download(url: &str) -> Result<Vec<u8>, InstallError> {
+    let failed = |error: ureq::Error| InstallError::Download {
+        url: url.to_owned(),
+        source: error,
+    };
+
     let agent = ureq::Agent::config_builder()
         .timeout_global(Some(DOWNLOAD_TIMEOUT))
         .build()
         .new_agent();
     let mut response = agent
-        .get(STEAMCMD_WINDOWS_URL)
+        .get(url)
         // A stale CDN entry can serve an old archive at the same path, so pin identity.
         .header("accept-encoding", "identity")
         .call()
-        .with_context(|| format!("downloading {STEAMCMD_WINDOWS_URL}"))?;
-    response
-        .body_mut()
-        .read_to_vec()
-        .with_context(|| format!("reading the response from {STEAMCMD_WINDOWS_URL}"))
+        .map_err(failed)?;
+    response.body_mut().read_to_vec().map_err(failed)
+}
+
+/// Refuses archives that do not match the checksum the registry vouches for.
+fn verify(archive: &[u8], expected: &str) -> Result<(), InstallError> {
+    let hash = sha256_hex(archive);
+    if !hash.eq_ignore_ascii_case(expected) {
+        return Err(InstallError::ChecksumMismatch {
+            got: hash,
+            expected: expected.to_owned(),
+        });
+    }
+    Ok(())
 }
 
 /// Unpacks the downloaded archive into the target directory.
-fn extract(archive: &[u8], target: &Path) -> Result<()> {
-    let mut zip = zip::ZipArchive::new(Cursor::new(archive)).context("reading steamcmd.zip")?;
-    std::fs::create_dir_all(target).with_context(|| format!("creating {}", target.display()))?;
+fn extract(archive: &[u8], target: &Path) -> Result<(), InstallError> {
+    let write_error = |path: &Path, error: std::io::Error| InstallError::Write {
+        path: path.to_path_buf(),
+        source: error,
+    };
+
+    let mut zip = zip::ZipArchive::new(Cursor::new(archive))
+        .map_err(|error| InstallError::Archive { source: error })?;
+    std::fs::create_dir_all(target).map_err(|error| write_error(target, error))?;
     for index in 0..zip.len() {
-        let mut entry = zip.by_index(index)?;
-        let name = entry.name().context("reading an archive entry name")?;
+        let mut entry = zip
+            .by_index(index)
+            .map_err(|error| InstallError::Archive { source: error })?;
+        let name = entry
+            .name()
+            .map_err(|error| InstallError::Archive { source: error })?;
         let out = entry_target(target, &name)?;
         if entry.is_dir() {
-            std::fs::create_dir_all(&out)?;
+            std::fs::create_dir_all(&out).map_err(|error| write_error(&out, error))?;
             continue;
         }
         if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).map_err(|error| write_error(parent, error))?;
         }
-        let mut file = std::fs::File::create(&out)?;
-        std::io::copy(&mut entry, &mut file)?;
+        let mut file = std::fs::File::create(&out).map_err(|error| write_error(&out, error))?;
+        std::io::copy(&mut entry, &mut file).map_err(|error| write_error(&out, error))?;
         // The zip carries no Unix mode bits; WSL needs the execute bit to
         // launch the exe through interop.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755))?;
+            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755))
+                .map_err(|error| write_error(&out, error))?;
         }
     }
     Ok(())
 }
 
 /// Resolves an archive entry name against the target, refusing paths that escape it.
-fn entry_target(target: &Path, name: &str) -> Result<PathBuf> {
+fn entry_target(target: &Path, name: &str) -> Result<PathBuf, InstallError> {
     let escapes = Path::new(name).components().any(|component| {
         !matches!(
             component,
@@ -108,9 +186,24 @@ fn entry_target(target: &Path, name: &str) -> Result<PathBuf> {
         )
     });
     if escapes {
-        bail!("the archive contains an unsafe path: {name}");
+        return Err(InstallError::UnsafeEntryPath {
+            name: name.to_owned(),
+        });
     }
     Ok(target.join(name))
+}
+
+/// The lowercase hex SHA-256 of a byte slice.
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[cfg(test)]
@@ -118,7 +211,7 @@ mod tests {
     use super::*;
 
     /// Builds an in-memory zip archive from name and content pairs.
-    fn zip_of(entries: &[(&str, &[u8])]) -> Result<Vec<u8>> {
+    fn zip_of(entries: &[(&str, &[u8])]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut bytes = Vec::new();
         {
             let mut writer = zip::ZipWriter::new(Cursor::new(&mut bytes));
@@ -140,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn unpacks_every_entry_under_the_target() -> Result<()> {
+    fn unpacks_every_entry_under_the_target() -> Result<(), Box<dyn std::error::Error>> {
         let archive = zip_of(&[
             ("steamcmd.exe", b"MZ fake exe".as_slice()),
             ("sub/steamclient.dll", b"dll bytes".as_slice()),
@@ -192,5 +285,17 @@ mod tests {
                 "{name} must be refused"
             );
         }
+    }
+
+    #[test]
+    fn hashes_known_vectors() {
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 }
