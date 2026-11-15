@@ -5,6 +5,15 @@ use crate::config;
 
 use super::{SteamInstall, SteamKind, validate};
 
+/// Maps a Windows path onto the drive mount root, passing through paths without a drive.
+pub(super) fn translate_windows_path(path: &Path) -> PathBuf {
+    if !is_wsl() {
+        return path.to_path_buf();
+    }
+    mounted_windows_path(&path.to_string_lossy(), &automount_root())
+        .unwrap_or_else(|| path.to_path_buf())
+}
+
 /// Reports whether this process runs inside WSL.
 pub(super) fn is_wsl() -> bool {
     std::fs::read_to_string("/proc/version")

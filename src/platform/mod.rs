@@ -52,3 +52,14 @@ fn strip_verbatim(path: &Path) -> PathBuf {
         _ => path.to_path_buf(),
     }
 }
+
+pub fn translate_windows_path(path: &Path) -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        wsl::translate_windows_path(path)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        path.to_path_buf()
+    }
+}

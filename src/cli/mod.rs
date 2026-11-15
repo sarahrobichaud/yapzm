@@ -1,10 +1,8 @@
-
 mod health;
 
-
-use std::cmp;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::cmp;
 
 #[derive(Parser)]
 #[command(

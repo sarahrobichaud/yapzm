@@ -1,28 +1,32 @@
 //! The detected Steam client and its libraries.
 
-use super::libraries;
-use crate::{ClientPaths, platform};
+use std::path::PathBuf;
 
-/// The Steam game client.
+use super::libraries;
+use crate::platform;
+
 pub struct SteamClient {
-    pub paths: ClientPaths,
+    libraries: Vec<PathBuf>,
 }
 
 impl SteamClient {
     /// Detects the Steam install, requiring a readable library index.
     pub fn detect() -> Option<Self> {
         let install = platform::locate_steam().ok()??;
-        let libraries = libraries::load(&install.root);
+
+        let libraries: Vec<PathBuf> = libraries::load(&install.root)
+            .into_iter()
+            .map(|path| platform::translate_windows_path(&path))
+            .collect();
 
         if libraries.is_empty() {
             return None;
         }
 
-        Some(Self {
-            paths: ClientPaths {
-                root: install.root,
-                libraries,
-            },
-        })
+        Some(Self { libraries })
+    }
+
+    pub fn game_install_location_candidates(&self) -> &[PathBuf] {
+        &self.libraries
     }
 }
