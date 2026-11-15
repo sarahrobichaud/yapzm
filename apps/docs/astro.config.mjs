@@ -9,7 +9,15 @@ export default defineConfig({
 			title: 'YAPZM',
 			description: 'Yet another Project Zomboid Manager',
 			favicon: '/favicon.svg',
-			sidebar: [{ label: 'About', slug: 'about' }],
+			sidebar: [
+				{ label: 'About', slug: 'about' },
+				{ label: 'Installation', slug: 'installation' },
+				{ label: 'Configuration', slug: 'reference/configuration' },
+				{
+					label: 'Clients',
+					items: [{ label: 'CLI', slug: 'reference/cli' }],
+				},
+			],
 		}),
 	],
 });

@@ -11,6 +11,10 @@ The primary goal: never experience a broken save or an unplayable game ever agai
 
 YAPZM lets you manage multiple versions of the game at the same time, and multiple instances that are completely isolated from one another. Everything is static and non-moving, so you don't need to worry about updates messing things up or corrupting saves.
 
+## Supported game clients
+
+YAPZM supports Steam, with GOG support planned.
+
 ## Beta checklist
 
 What YAPZM needs before entering beta:
@@ -29,4 +33,4 @@ YAPZM is in early development. A client with a user interface is planned for the
 
 ## AI disclosure
 
-AI programming tools are used during development, but code is reviewed thoroughly based on its importance, judged from my experience as a software developer.
+YAPZM is not vibe coded. AI programming tools are used during development, but code is reviewed appropriately based on its importance, judged from my experience as a software developer. AI is not used for art.
