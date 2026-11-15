@@ -19,6 +19,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Check the health of system components
     Health {
         /// Display more details
         #[arg(short, long)]
