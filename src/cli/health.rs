@@ -1,10 +1,14 @@
-//! Health check command reporting detected clients, installs, and workshop content.
+//! Health check command reporting detected clients, steamcmd, installs, and workshop content.
+
+use std::path::Path;
 
 use anyhow::Result;
 
 use crate::{
     cli::{plural, print_header, print_separator},
+    config,
     steam::SteamClient,
+    steamcmd,
     zomboid::{self, GameVersion, Install, VersionError},
 };
 
@@ -32,6 +36,7 @@ pub fn run(is_verbose: bool) -> Result<()> {
         print_header("Component Health Check");
     }
     print_clients(&clients, is_verbose);
+    print_steamcmd(is_verbose);
     print_workshop(&clients, is_verbose);
     print_installs(&detect_installs(&clients), is_verbose);
 
@@ -45,7 +50,11 @@ fn print_clients(clients: &Clients, is_verbose: bool) {
 
     match &clients.steam {
         Some(steam) => print_client(steam, is_verbose),
-        None => println!("[ ] Steam - not detected"),
+        None => {
+            let reason = config::steam_dir()
+                .map(|root| override_reason("YAPZM_STEAM_DIR", &root, "a Steam install"));
+            print_not_detected("Steam", reason.as_deref());
+        }
     }
     println!();
 }
@@ -89,6 +98,30 @@ fn print_installs(installs: &[InstallSource], is_verbose: bool) {
                 println!("    Location: {}", install.details.path.display());
             }
             print_details(install, is_verbose);
+        }
+    }
+    println!();
+}
+
+/// Prints the steamcmd detection status, with guidance when it is missing.
+fn print_steamcmd(is_verbose: bool) {
+    print_separator();
+    println!();
+    println!("SteamCMD Status:");
+    println!();
+
+    match steamcmd::locate() {
+        Some(program) => {
+            println!("[x] SteamCMD - detected");
+            if is_verbose {
+                println!("    Location: {}", program.display());
+            }
+        }
+        None => {
+            let reason = config::steamcmd()
+                .map(|path| override_reason("YAPZM_STEAMCMD", &path, "a steamcmd executable"));
+            let fallback = "install it or set YAPZM_STEAMCMD";
+            print_not_detected("SteamCMD", reason.as_deref().or(Some(fallback)));
         }
     }
     println!();
@@ -181,4 +214,20 @@ fn describe_version(version: &Result<GameVersion, VersionError>, is_verbose: boo
     } else {
         game_version.version.clone()
     }
+}
+
+/// Prints a component's not-detected line, with the reason when one is known.
+fn print_not_detected(component: &str, reason: Option<&str>) {
+    match reason {
+        Some(reason) => println!("[ ] {component} - not detected; {reason}"),
+        None => println!("[ ] {component} - not detected"),
+    }
+}
+
+/// The reason a configured override failed to yield a detection.
+fn override_reason(flag: &str, path: &Path, expectation: &str) -> String {
+    format!(
+        "{flag} points to {}, which is not {expectation}",
+        path.display()
+    )
 }

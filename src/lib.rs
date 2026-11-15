@@ -6,4 +6,6 @@ pub mod platform;
 
 pub mod steam;
 
+pub mod steamcmd;
+
 pub mod zomboid;

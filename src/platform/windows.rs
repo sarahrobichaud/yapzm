@@ -8,10 +8,8 @@ use super::{SteamInstall, SteamKind, validate};
 
 /// Locates Steam via the configured override, its registry key, then default paths.
 pub fn locate_steam() -> io::Result<Option<SteamInstall>> {
-    if let Some(root) = crate::config::steam_dir() {
-        if let Some(install) = validate(&root, SteamKind::Native) {
-            return Ok(Some(install));
-        }
+    if let Some(root) = super::steam_override_root() {
+        return Ok(validate(&root, SteamKind::Native));
     }
     if let Some(root) = registry_root() {
         if let Some(install) = validate(&root, SteamKind::Native) {
@@ -42,4 +40,21 @@ fn candidate_roots() -> Vec<PathBuf> {
         .filter_map(|var| std::env::var_os(var))
         .map(|dir| PathBuf::from(dir).join("Steam"))
         .collect()
+}
+
+/// Probes the locations steamcmd occupies on a Windows system.
+pub fn steamcmd_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    for name in ["steamcmd.exe", "steamcmd"] {
+        if let Some(path) = super::path_lookup(name) {
+            candidates.push(path);
+        }
+    }
+    for letter in b'A'..=b'Z' {
+        candidates.push(PathBuf::from(format!(
+            "{}:\\steamcmd\\steamcmd.exe",
+            letter as char
+        )));
+    }
+    candidates
 }

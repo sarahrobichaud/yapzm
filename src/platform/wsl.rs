@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::config;
-
 use super::{SteamInstall, SteamKind, validate};
 
 /// Maps a Windows path onto the drive mount root, passing through paths without a drive.
@@ -21,11 +19,8 @@ pub(super) fn is_wsl() -> bool {
         .unwrap_or(false)
 }
 
-/// Locates the Windows Steam install via the configured override, registry interop, then the C mount.
+/// Locates the Windows Steam install via registry interop, then the C mount.
 pub(super) fn locate_windows_steam() -> Option<SteamInstall> {
-    if let Some(install) = override_root().and_then(|root| validate(&root, SteamKind::Native)) {
-        return Some(install);
-    }
     if let Some(root) = registry_root()
         && let Some(install) = validate(&root, SteamKind::Native)
     {
@@ -102,18 +97,23 @@ fn parse_automount_root(conf: &str) -> PathBuf {
     PathBuf::from("/mnt")
 }
 
-/// Translates the configured Steam directory into a WSL path when given as a Windows path.
-fn override_root() -> Option<PathBuf> {
-    let dir = config::steam_dir()?;
-    Some(mounted_windows_path(&dir.to_string_lossy(), &automount_root()).unwrap_or(dir))
-}
-
 /// Probes the C: mount's default Steam directories.
 fn c_drive_candidates() -> Vec<PathBuf> {
     let mount = automount_root().join("c");
     ["Program Files (x86)", "Program Files"]
         .iter()
         .map(|dir| mount.join(dir).join("Steam"))
+        .collect()
+}
+
+/// Probes each Windows drive mount for a manually installed steamcmd.
+pub(super) fn drive_candidates() -> Vec<PathBuf> {
+    let Ok(mounts) = std::fs::read_dir(automount_root()) else {
+        return Vec::new();
+    };
+    mounts
+        .flatten()
+        .map(|entry| entry.path().join("steamcmd/steamcmd.exe"))
         .collect()
 }
 

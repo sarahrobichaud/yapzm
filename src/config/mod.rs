@@ -8,3 +8,10 @@ pub fn steam_dir() -> Option<PathBuf> {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
 }
+
+/// SteamCMD executable to use in place of automatic discovery, when set.
+pub fn steamcmd() -> Option<PathBuf> {
+    std::env::var_os("YAPZM_STEAMCMD")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}

@@ -5,10 +5,8 @@ use super::{SteamInstall, SteamKind, validate};
 
 /// Locates Steam via the configured override, then the paths Steam occupies by default.
 pub fn locate_steam() -> io::Result<Option<SteamInstall>> {
-    if let Some(root) = crate::config::steam_dir()
-        && let Some(install) = validate(&root, classify(&root))
-    {
-        return Ok(Some(install));
+    if let Some(root) = super::steam_override_root() {
+        return Ok(validate(&root, classify(&root)));
     }
     for root in candidate_roots() {
         if let Some(install) = validate(&root, classify(&root)) {
@@ -61,4 +59,29 @@ fn wsl_fallback() -> io::Result<Option<SteamInstall>> {
 #[cfg(not(target_os = "linux"))]
 fn wsl_fallback() -> io::Result<Option<SteamInstall>> {
     Ok(None)
+}
+
+/// Probes the locations steamcmd occupies, or the Windows host's under WSL.
+pub fn steamcmd_candidates() -> Vec<PathBuf> {
+    if super::wsl::is_wsl() {
+        return wsl_steamcmd_candidates();
+    }
+    let mut candidates = Vec::new();
+    if let Some(path) = super::path_lookup("steamcmd") {
+        candidates.push(path);
+    }
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(home.join("steamcmd/steamcmd"));
+    }
+    candidates
+}
+
+/// Probes the Windows host's steamcmd through interop and the drive mounts.
+fn wsl_steamcmd_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(path) = super::path_lookup("steamcmd.exe") {
+        candidates.push(path);
+    }
+    candidates.extend(super::wsl::drive_candidates());
+    candidates
 }
