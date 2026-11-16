@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::config;
+
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
@@ -42,6 +44,11 @@ pub(crate) fn validate(root: &Path, kind: SteamKind) -> Option<SteamInstall> {
     })
 }
 
+/// The configured Steam root, mapped onto this system's paths when set.
+fn steam_override_root() -> Option<PathBuf> {
+    config::steam_dir().map(|root| translate_windows_path(&root))
+}
+
 /// Removes the extended-length prefix canonicalize adds on Windows drive paths.
 fn strip_verbatim(path: &Path) -> PathBuf {
     let Some(s) = path.to_str() else {
@@ -62,4 +69,24 @@ pub fn translate_windows_path(path: &Path) -> PathBuf {
     {
         path.to_path_buf()
     }
+}
+
+/// Reports whether this process runs inside WSL.
+pub fn is_wsl() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        wsl::is_wsl()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+/// Searches `PATH` for an executable name, returning the first file match.
+pub(crate) fn path_lookup(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(name))
+        .find(|p| p.is_file())
 }

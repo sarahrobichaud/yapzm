@@ -1,4 +1,5 @@
 mod health;
+mod steamcmd;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -25,6 +26,11 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+    /// Manage the SteamCMD executable
+    Steamcmd {
+        #[command(subcommand)]
+        command: steamcmd::SteamcmdCommand,
+    },
 }
 
 pub fn run() -> Result<()> {
@@ -32,6 +38,7 @@ pub fn run() -> Result<()> {
 
     match cli.command {
         Commands::Health { verbose } => health::run(verbose),
+        Commands::Steamcmd { command } => steamcmd::run(command),
     }
 }
 
