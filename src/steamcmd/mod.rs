@@ -6,7 +6,7 @@ use crate::{config, platform};
 
 mod install;
 
-pub use install::install;
+pub use install::{InstallOutcome, install};
 
 /// Locates steamcmd, using only the configured override when it is set.
 pub fn locate() -> Option<PathBuf> {

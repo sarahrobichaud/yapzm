@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Subcommand;
 
-use crate::steamcmd;
+use crate::steamcmd::{self, InstallOutcome};
 
 #[derive(Subcommand)]
 pub enum SteamcmdCommand {
@@ -20,10 +20,17 @@ pub enum SteamcmdCommand {
 /// Runs a steamcmd subcommand.
 pub fn run(command: SteamcmdCommand) -> Result<()> {
     match command {
-        SteamcmdCommand::Install { to } => {
-            let exe = steamcmd::install(to.as_deref())?;
-            println!("steamcmd installed: {}", exe.display());
-            Ok(())
-        }
+        SteamcmdCommand::Install { to } => match steamcmd::install(to.as_deref())? {
+            InstallOutcome::Installed { path } => {
+                println!("steamcmd installed: {}", path.display());
+            }
+            InstallOutcome::AlreadyInstalled { path } => {
+                println!(
+                    "steamcmd is already installed at {}; nothing to do",
+                    path.display()
+                );
+            }
+        },
     }
+    Ok(())
 }

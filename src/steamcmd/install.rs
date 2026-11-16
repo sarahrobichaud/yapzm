@@ -13,17 +13,17 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 /// The ways a steamcmd installation can fail.
 #[derive(Debug, thiserror::Error)]
 pub enum InstallError {
-    /// steamcmd was detected and no explicit target was requested.
-    #[error("steamcmd is already installed at {path}; nothing to do")]
-    AlreadyInstalled { path: PathBuf },
-
     /// This platform has no automatic steamcmd installation.
     #[error(
-        "steamcmd installation is only supported on Windows; on Linux, follow \
-         https://developer.valvesoftware.com/wiki/SteamCMD#_Linux and install \
-         yapzm alongside steamcmd"
+        "steamcmd cannot be installed automatically on this platform; on Linux, \
+         follow https://developer.valvesoftware.com/wiki/SteamCMD#_Linux and \
+         install yapzm alongside steamcmd"
     )]
     UnsupportedPlatform,
+
+    /// The target path exists and is not an empty directory.
+    #[error("{path} already exists and is not an empty directory")]
+    TargetOccupied { path: PathBuf },
 
     /// The registry could not be loaded.
     #[error("could not load the registry")]
@@ -32,8 +32,8 @@ pub enum InstallError {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    /// The registry lists no steamcmd package to trust.
-    #[error("the registry does not list a steamcmd package")]
+    /// The registry lists no steamcmd package.
+    #[error("the registry lists no steamcmd package")]
     PackageNotListed,
 
     /// The download failed.
@@ -44,10 +44,10 @@ pub enum InstallError {
         source: ureq::Error,
     },
 
-    /// The downloaded archive does not match the checksum the registry vouches for.
+    /// The downloaded archive does not match the registry's checksum.
     #[error(
-        "the downloaded steamcmd.zip does not match the checksum in the registry: \
-         got {got}, expected {expected}; refusing to install it"
+        "the downloaded steamcmd.zip does not match the registry's checksum \
+         (got {got}, expected {expected})"
     )]
     ChecksumMismatch { got: String, expected: String },
 
@@ -58,7 +58,7 @@ pub enum InstallError {
         source: zip::result::ZipError,
     },
 
-    /// A directory or file could not be written.
+    /// A file or directory could not be written under the target.
     #[error("writing {path}")]
     Write {
         path: PathBuf,
@@ -71,19 +71,33 @@ pub enum InstallError {
     UnsafeEntryPath { name: String },
 }
 
-/// Installs steamcmd and returns the path of the installed executable.
-pub fn install(to: Option<&Path>) -> Result<PathBuf, InstallError> {
-    if to.is_none()
-        && let Some(existing) = locate()
-    {
-        return Err(InstallError::AlreadyInstalled { path: existing });
-    }
+/// What an install request did.
+#[derive(Debug)]
+pub enum InstallOutcome {
+    /// steamcmd was freshly installed at this path.
+    Installed { path: PathBuf },
+
+    /// steamcmd was already present at this path; nothing was done.
+    AlreadyInstalled { path: PathBuf },
+}
+
+/// Installs steamcmd and reports where the executable ended up.
+pub fn install(to: Option<&Path>) -> Result<InstallOutcome, InstallError> {
+
     if !cfg!(windows) && !platform::is_wsl() {
         return Err(InstallError::UnsupportedPlatform);
     }
 
+    if to.is_none()
+        && let Some(existing) = locate()
+    {
+        return Ok(InstallOutcome::AlreadyInstalled { path: existing });
+    }
+
     let package = registry::load()
-        .map_err(|error| InstallError::Registry { source: error.into() })?
+        .map_err(|error| InstallError::Registry {
+            source: error.into(),
+        })?
         .steamcmd
         .ok_or(InstallError::PackageNotListed)?;
 
@@ -92,10 +106,16 @@ pub fn install(to: Option<&Path>) -> Result<PathBuf, InstallError> {
         None => default_target(),
     };
 
+    ensure_empty(&target)?;
+
     let archive = download(&package.url)?;
+    
     verify(&archive, &package.sha256)?;
     extract(&archive, &target)?;
-    Ok(target.join("steamcmd.exe"))
+    
+    Ok(InstallOutcome::Installed {
+        path: target.join("steamcmd.exe"),
+    })
 }
 
 /// Picks the default install directory; only reached on Windows or WSL.
@@ -104,6 +124,23 @@ fn default_target() -> PathBuf {
         return PathBuf::from("/mnt/c/steamcmd");
     }
     PathBuf::from(r"C:\steamcmd")
+}
+
+/// Refuses a target that is not an absent or empty directory.
+fn ensure_empty(target: &Path) -> Result<(), InstallError> {
+    if !target.exists() {
+        return Ok(());
+    }
+    let empty = std::fs::read_dir(target)
+        .map(|mut entries| entries.next().is_none())
+        .unwrap_or(false);
+    if empty {
+        Ok(())
+    } else {
+        Err(InstallError::TargetOccupied {
+            path: target.to_path_buf(),
+        })
+    }
 }
 
 /// Downloads the steamcmd distribution to install.
@@ -285,6 +322,39 @@ mod tests {
                 "{name} must be refused"
             );
         }
+    }
+
+    #[test]
+    fn accepts_an_absent_or_empty_target() -> Result<(), Box<dyn std::error::Error>> {
+        let absent = scratch_dir("target-absent");
+        assert!(ensure_empty(&absent).is_ok());
+
+        let empty = scratch_dir("target-empty");
+        std::fs::create_dir_all(&empty)?;
+        assert!(ensure_empty(&empty).is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn refuses_a_target_that_already_holds_files() -> Result<(), Box<dyn std::error::Error>> {
+        let target = scratch_dir("target-full");
+        std::fs::create_dir_all(&target)?;
+        std::fs::write(target.join("steamcmd.exe"), b"old")?;
+        assert!(matches!(
+            ensure_empty(&target),
+            Err(InstallError::TargetOccupied { .. })
+        ));
+
+        // A plain file at the target path is occupied too.
+        let file = scratch_dir("target-file");
+        std::fs::write(&file, b"old")?;
+        assert!(matches!(
+            ensure_empty(&file),
+            Err(InstallError::TargetOccupied { .. })
+        ));
+
+        Ok(())
     }
 
     #[test]

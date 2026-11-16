@@ -63,10 +63,10 @@ fn print_clients(clients: &Clients, is_verbose: bool) {
 fn detect_installs(clients: &Clients) -> Vec<InstallSource> {
     let mut detected: Vec<(String, Install)> = Vec::new();
 
-    if let Some(steam) = &clients.steam {
-        if let Some(install) = zomboid::Install::detect_steam(steam.libraries()) {
-            detected.push(("Steam".to_owned(), install));
-        }
+    if let Some(steam) = &clients.steam
+        && let Some(install) = zomboid::Install::detect_steam(steam.libraries())
+    {
+        detected.push(("Steam".to_owned(), install));
     }
 
     detected

@@ -189,8 +189,8 @@ mod tests {
 
     #[test]
     fn the_steamcmd_section_is_optional() {
-        let registry = parse(r#"{ "builds": [ { "version": "42.22.2", "manifest": 1 } ] }"#)
-            .unwrap();
+        let registry =
+            parse(r#"{ "builds": [ { "version": "42.22.2", "manifest": 1 } ] }"#).unwrap();
 
         assert_eq!(registry.steamcmd, None);
         assert_eq!(registry.entries.len(), 1);
