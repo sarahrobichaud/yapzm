@@ -5,28 +5,29 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::{
-    cli::output::{plural, print_header, print_section},
+    cli::{
+        CommandInput,
+        output::{plural, print_header, print_section},
+    },
     components::{Component, Detection, Location, Missing, Requirement},
-    config::{Config, Origin, Setting},
+    config::{Origin, Setting},
     steam::SteamClient,
     steamcmd::Steamcmd,
     zomboid::{self, GameVersion, Install, VersionError, Workshop},
 };
 
 /// Runs the health check, reporting each component in its own section.
-pub fn run(config: &Config, is_verbose: bool) -> Result<()> {
-    let steam = SteamClient::detect(config.steam_path().map(Setting::as_path));
-
-    if is_verbose {
+pub fn run(input: &CommandInput) -> Result<()> {
+    if input.invocation.is_verbose {
         print_header("Component Health Check (detailed)");
     } else {
         print_header("Component Health Check");
     }
 
-    report_clients(config, &steam, is_verbose);
-    report_steamcmd(config, is_verbose);
-    report_workshop(steam.as_ready(), is_verbose);
-    report_install(steam.as_ready(), is_verbose);
+    report_clients(input);
+    report_steamcmd(input);
+    report_workshop(input);
+    report_install(input);
 
     Ok(())
 }
@@ -34,11 +35,14 @@ pub fn run(config: &Config, is_verbose: bool) -> Result<()> {
 // Sections, in the order they print.
 
 /// Reports each game client, or why it is unusable.
-fn report_clients(config: &Config, steam: &Detection<SteamClient>, is_verbose: bool) {
+fn report_clients(input: &CommandInput) {
+    let config = &input.context.config;
+    let is_verbose = input.invocation.is_verbose;
+
     println!("Detected Clients:");
     println!();
 
-    match steam {
+    match input.context.components.steam_detection() {
         Detection::Ready(steam) => print_steam_client(steam, is_verbose),
         Detection::Invalid { location, unmet } => {
             print_invalid::<SteamClient, _>(location, unmet);
@@ -52,46 +56,51 @@ fn report_clients(config: &Config, steam: &Detection<SteamClient>, is_verbose: b
 }
 
 /// Reports where steamcmd was found, or why it is unusable.
-fn report_steamcmd(config: &Config, is_verbose: bool) {
+fn report_steamcmd(input: &CommandInput) {
+    let config = &input.context.config;
+    let is_verbose = input.invocation.is_verbose;
+
     print_section(&format!("{} Status", Steamcmd::NAME));
 
-    match Steamcmd::detect(config.steamcmd_path().map(Setting::as_path)) {
+    match input.context.components.steamcmd_detection() {
         Detection::Ready(steamcmd) => {
             println!("[x] {} - detected", Steamcmd::NAME);
             if is_verbose {
                 println!("    Location: {}", steamcmd.path().display());
             }
         }
-        Detection::Invalid { location, unmet } => print_invalid::<Steamcmd, _>(&location, &unmet),
+        Detection::Invalid { location, unmet } => print_invalid::<Steamcmd, _>(location, unmet),
         Detection::Missing(missing) => {
             let reason = not_found_reason(config.steamcmd_path());
-            print_missing::<Steamcmd>(&reason, &missing, is_verbose);
+            print_missing::<Steamcmd>(&reason, missing, is_verbose);
         }
     }
     println!();
 }
 
 /// Reports the workshop content, with guidance when it cannot be detected.
-fn report_workshop(steam: Option<&SteamClient>, is_verbose: bool) {
+fn report_workshop(input: &CommandInput) {
+    let is_verbose = input.invocation.is_verbose;
+
     print_section(&format!("{} Integration Status", Workshop::NAME));
 
-    let Some(steam) = steam else {
+    let Some(detection) = input.context.components.workshop_detection() else {
         println!("[ ] {} - install {}", Workshop::NAME, SteamClient::NAME);
         println!();
         return;
     };
 
-    match Workshop::detect(steam) {
+    match detection {
         Detection::Ready(workshop) => {
             println!("[x] {} - Enabled", Workshop::NAME);
             if is_verbose {
                 println!("    Location: {}", workshop.path().display());
             }
         }
-        Detection::Invalid { location, unmet } => print_invalid::<Workshop, _>(&location, &unmet),
+        Detection::Invalid { location, unmet } => print_invalid::<Workshop, _>(location, unmet),
         Detection::Missing(missing) => print_missing::<Workshop>(
             "install the game and subscribe to a workshop item to enable workshop integration",
-            &missing,
+            missing,
             is_verbose,
         ),
     }
@@ -99,25 +108,26 @@ fn report_workshop(steam: Option<&SteamClient>, is_verbose: bool) {
 }
 
 /// Reports the game install with its version, or why it is unusable.
-fn report_install(steam: Option<&SteamClient>, is_verbose: bool) {
-    let detection = steam.map(Install::detect);
+fn report_install(input: &CommandInput) {
+    let components = &input.context.components;
+    let is_verbose = input.invocation.is_verbose;
+
     // Probed before printing so the output never pauses midway.
-    let version = detection
-        .as_ref()
-        .and_then(Detection::as_ready)
+    let version = components
+        .install()
         .map(|install| zomboid::version::detect(install.path()));
 
     print_section("Detected External Game Installs");
 
-    match (detection, version) {
+    match (components.install_detection(), version) {
         (Some(Detection::Ready(install)), Some(version)) => {
-            print_install(&install, &version, is_verbose);
+            print_install(install, &version, is_verbose);
         }
         (Some(Detection::Invalid { location, unmet }), _) => {
-            print_invalid::<Install, _>(&location, &unmet);
+            print_invalid::<Install, _>(location, unmet);
         }
         (Some(Detection::Missing(missing)), _) => {
-            print_missing::<Install>("not detected", &missing, is_verbose);
+            print_missing::<Install>("not detected", missing, is_verbose);
         }
         _ => println!("[ ] {} - not detected", Install::NAME),
     }

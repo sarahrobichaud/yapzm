@@ -1,15 +1,15 @@
 //! Mod management subcommands.
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use clap::Subcommand;
 
+use crate::cli::CommandInput;
 use crate::cli::output::{plural, print_header};
 use crate::cli::progress::CopyBar;
-use crate::components::{Component, Detection};
-use crate::config::{Config, Setting};
+use crate::components::Component;
+use crate::context::Context;
 use crate::platform;
-use crate::steam::SteamClient;
-use crate::store::{CopyOutcome, Store};
+use crate::store::CopyOutcome;
 use crate::zomboid::Workshop;
 
 #[derive(Subcommand)]
@@ -24,17 +24,16 @@ pub enum ModsCommand {
 }
 
 /// Runs a mods subcommand.
-pub fn run(config: &Config, store: &Store, command: ModsCommand) -> Result<()> {
+pub fn run(input: &CommandInput, command: ModsCommand) -> Result<()> {
     match command {
-        ModsCommand::Workshop { copy: true } => copy_workshop(config, store),
+        ModsCommand::Workshop { copy: true } => copy_workshop(&input.context),
         ModsCommand::Workshop { copy: false } => Ok(()),
     }
 }
 
 /// Copies the installed workshop items into the store and reports what changed.
-fn copy_workshop(config: &Config, store: &Store) -> Result<()> {
-    let steam = SteamClient::detect(config.steam_path().map(Setting::as_path));
-    let Some(Detection::Ready(workshop)) = steam.as_ready().map(Workshop::detect) else {
+fn copy_workshop(context: &Context) -> Result<()> {
+    let Some(workshop) = context.components.workshop() else {
         println!(
             "{} integration is not enabled, run \"yapzm health\" for details",
             Workshop::NAME
@@ -54,7 +53,8 @@ fn copy_workshop(config: &Config, store: &Store) -> Result<()> {
     }
 
     let mut progress = CopyBar::new();
-    let outcomes = store
+    let outcomes = context
+        .store
         .copy_workshop_items(&items, &mut progress)
         .context("failed to copy workshop items into the store")?;
 

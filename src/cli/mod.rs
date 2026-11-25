@@ -11,6 +11,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 
 use crate::components::{Component, Provision, Provisioned};
 use crate::config::{Config, ConfigFile, ConfigState, DataDir, Origin};
+use crate::context::Context as AppContext;
 use crate::store::Store;
 
 #[derive(Parser)]
@@ -26,17 +27,29 @@ struct Cli {
     #[arg(short, long)]
     setup: bool,
 
+    /// Show more detail in command output
+    #[arg(short, long, global = true)]
+    verbose: bool,
+
     #[command(subcommand)]
     command: Option<Commands>,
+}
+
+/// Everything a command receives: the app's state and how it was invoked.
+pub(crate) struct CommandInput {
+    pub(crate) context: AppContext,
+    pub(crate) invocation: Invocation,
+}
+
+/// How the command line asked a command to behave, apart from the command's own arguments.
+pub(crate) struct Invocation {
+    pub(crate) is_verbose: bool,
 }
 
 #[derive(Subcommand)]
 enum Commands {
     /// Report which components are detected and usable
-    Health {
-        #[arg(short, long)]
-        verbose: bool,
-    },
+    Health,
     /// Manage steamcmd
     Steamcmd {
         #[command(subcommand)]
@@ -58,12 +71,14 @@ pub fn run() -> Result<()> {
     }
 
     let config_state = Config::resolve().context("failed to resolve config")?;
+
     let ready = match config_state {
         ConfigState::Ready(config) => Store::detect(config.data_dir().path())
             .ready()
             .map(|store| (config, store)),
         ConfigState::SetupRequired => None,
     };
+
     let Some((config, store)) = ready else {
         println!("Setup required, run \"yapzm --setup\"");
         return Ok(());
@@ -76,10 +91,16 @@ pub fn run() -> Result<()> {
         return Ok(());
     };
 
+    let input = CommandInput {
+        context: AppContext::detect(config, store),
+        invocation: Invocation {
+            is_verbose: cli.verbose,
+        },
+    };
     match command {
-        Commands::Health { verbose } => health::run(&config, verbose),
-        Commands::Steamcmd { command } => steamcmd::run(&config, command),
-        Commands::Mods { command } => mods::run(&config, &store, command),
+        Commands::Health => health::run(&input),
+        Commands::Steamcmd { command } => steamcmd::run(&input, command),
+        Commands::Mods { command } => mods::run(&input, command),
     }
 }
 

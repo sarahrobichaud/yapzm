@@ -2,9 +2,10 @@
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use clap::Subcommand;
 
+use crate::cli::CommandInput;
 use crate::components::{Provision, Provisioned};
 use crate::config::{self, Config, Origin, Setting};
 use crate::steamcmd::{InstallOptions, Steamcmd};
@@ -20,9 +21,9 @@ pub enum SteamcmdCommand {
 }
 
 /// Runs a steamcmd subcommand.
-pub fn run(config: &Config, command: SteamcmdCommand) -> Result<()> {
+pub fn run(input: &CommandInput, command: SteamcmdCommand) -> Result<()> {
     match command {
-        SteamcmdCommand::Install { to } => install(config, to),
+        SteamcmdCommand::Install { to } => install(&input.context.config, to),
     }
 }
 
