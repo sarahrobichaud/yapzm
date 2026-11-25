@@ -61,7 +61,7 @@ enum Commands {
         #[command(subcommand)]
         command: mods::ModsCommand,
     },
-    /// Detect game versions and copy them into the local store
+    /// List stored game versions, detect them and copy them into the local store
     Version {
         #[command(subcommand)]
         command: version::VersionCommand,

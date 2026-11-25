@@ -4,7 +4,7 @@ use anyhow::{Context as _, Result};
 use clap::Subcommand;
 
 use crate::cli::CommandInput;
-use crate::cli::output::{print_header, print_wsl_copy_note};
+use crate::cli::output::{plural, print_header, print_wsl_copy_note};
 use crate::cli::progress::{CopyBar, spinner};
 use crate::components::Component;
 use crate::store::GameCopyOutcome;
@@ -12,6 +12,8 @@ use crate::zomboid::{self, Install};
 
 #[derive(Subcommand)]
 pub enum VersionCommand {
+    /// List the game versions held in the local store
+    List,
     /// Detect the version of the game installed through Steam
     Steam {
         /// Copy the Steam game install into the local store under its version
@@ -23,8 +25,42 @@ pub enum VersionCommand {
 /// Runs a version subcommand.
 pub fn run(input: &CommandInput, command: VersionCommand) -> Result<()> {
     match command {
+        VersionCommand::List => list_versions(input),
         VersionCommand::Steam { copy } => steam_version(input, copy),
     }
+}
+
+/// Lists the game versions held in the local store.
+fn list_versions(input: &CommandInput) -> Result<()> {
+    let store = &input.context.store;
+    let versions = store
+        .game_versions()
+        .context("failed to read the game versions in the store")?;
+
+    print_header("Stored Game Versions");
+
+    if versions.is_empty() {
+        println!("No game versions stored, run \"yapzm version steam --copy\" to store one");
+        return Ok(());
+    }
+
+    for version in &versions {
+        println!("[x] {} {version}", Install::NAME);
+        if input.invocation.is_verbose {
+            println!(
+                "    Location: {}",
+                store.game_version_dir(version).display()
+            );
+        }
+    }
+
+    println!();
+    println!(
+        "{} {} stored",
+        versions.len(),
+        plural(versions.len(), "version", "versions")
+    );
+    Ok(())
 }
 
 /// Reports the Steam install's game version and whether the store holds it, copying it when asked.
