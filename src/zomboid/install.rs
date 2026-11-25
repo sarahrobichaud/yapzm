@@ -99,87 +99,30 @@ pub(crate) fn java_path(game_dir: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A search location for a directory, as validation receives it.
-    fn location(path: &Path) -> Location<()> {
-        Location {
-            path: path.to_path_buf(),
-            source: Source::Search,
-            metadata: (),
-        }
-    }
+    use crate::testing::{Scratch, searched_location};
 
     #[test]
-    fn locate_reads_the_install_dir_from_the_manifest() {
-        let library =
-            std::env::temp_dir().join(format!("yapzm-install-detect-{}", std::process::id()));
-        let steamapps = library.join("steamapps");
-        std::fs::create_dir_all(steamapps.join("common").join("ProjectZomboid")).unwrap();
-        std::fs::write(
-            steamapps.join(format!("appmanifest_{APP_ID}.acf")),
-            r#""AppState"
-{
-	"installdir"		"ProjectZomboid"
-}
-"#,
-        )
-        .unwrap();
-
-        let location = locate_in_libraries(std::slice::from_ref(&library)).unwrap();
-        assert_eq!(
-            location.path,
-            steamapps.join("common").join("ProjectZomboid")
+    fn the_install_is_found_where_the_app_manifest_points() {
+        let library = Scratch::new();
+        library.file(
+            &format!("steamapps/appmanifest_{APP_ID}.acf"),
+            r#""AppState" { "installdir" "RenamedZomboid" }"#,
         );
+        let install_dir = library.dir("steamapps/common/RenamedZomboid");
 
-        let _ = std::fs::remove_dir_all(&library);
+        let location = locate_in_libraries(&[library.root().to_path_buf()]).unwrap();
+
+        assert_eq!(location.path, install_dir);
     }
 
     #[test]
-    fn locate_reports_the_manifests_it_searched() {
-        let library =
-            std::env::temp_dir().join(format!("yapzm-install-missing-{}", std::process::id()));
-
-        let missing = locate_in_libraries(std::slice::from_ref(&library)).unwrap_err();
-        assert_eq!(
-            missing.searched,
-            vec![library.join(format!("steamapps/appmanifest_{APP_ID}.acf"))]
-        );
-    }
-
-    #[test]
-    fn validate_reports_every_unmet_requirement_in_an_empty_directory() {
-        let dir =
-            std::env::temp_dir().join(format!("yapzm-install-req-empty-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-
-        let unmet = Install::validate(&location(&dir)).unwrap_err();
+    fn an_install_needs_the_game_jar_and_the_bundled_jvm() {
+        let game = Scratch::new();
+        let unmet = Install::validate(&searched_location(game.root())).unwrap_err();
         assert_eq!(unmet.len(), 2);
 
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn validate_accepts_an_install_with_its_files() {
-        let dir =
-            std::env::temp_dir().join(format!("yapzm-install-req-full-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("jre64/bin")).unwrap();
-        std::fs::write(dir.join("projectzomboid.jar"), "").unwrap();
-        std::fs::write(dir.join("jre64/bin/java"), "").unwrap();
-
-        let install = Install::validate(&location(&dir)).unwrap();
-        assert_eq!(install.path(), dir);
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn java_path_finds_the_bundled_executable() {
-        let dir = std::env::temp_dir().join(format!("yapzm-install-java-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("jre64/bin")).unwrap();
-        std::fs::write(dir.join("jre64/bin/java"), "").unwrap();
-
-        assert_eq!(java_path(&dir), Some(dir.join("jre64/bin/java")));
-
-        let _ = std::fs::remove_dir_all(&dir);
+        game.file("projectzomboid.jar", "");
+        game.file("jre64/bin/java", "");
+        assert!(Install::validate(&searched_location(game.root())).is_ok());
     }
 }

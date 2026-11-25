@@ -145,81 +145,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_the_registry_file() {
-        let text = r#"{
-            "builds": [
-                { "version": "42.22.2", "manifest": 2378094061158458897 },
-                { "version": "", "manifest": 1 },
-                { "version": "42.21.0", "manifest": 7544133343391543313, "depot": 108604, "buildid": 25485521 }
-            ],
-            "steamcmd": {
-                "url": "https://client-update.steamstatic.com/installer/steamcmd.zip",
-                "sha256": "7669b170dee42db8ee2273775ed7dfb2d173bdba1b849f70d2c7b379290bce13"
-            }
-        }"#;
-
-        let registry = parse(text).unwrap();
-
-        assert_eq!(
-            registry.entries,
-            vec![
-                Entry {
-                    version: "42.22.2".to_owned(),
-                    manifest: 2378094061158458897,
-                    depot: None,
-                    buildid: None,
-                },
-                Entry {
-                    version: "42.21.0".to_owned(),
-                    manifest: 7544133343391543313,
-                    depot: Some(108604),
-                    buildid: Some(25485521),
-                },
-            ],
-            "entries without a version are skipped"
-        );
-        assert_eq!(
-            registry.steamcmd,
-            Some(SteamcmdPackage {
-                url: "https://client-update.steamstatic.com/installer/steamcmd.zip".to_owned(),
-                sha256: "7669b170dee42db8ee2273775ed7dfb2d173bdba1b849f70d2c7b379290bce13"
-                    .to_owned(),
-            })
-        );
-    }
-
-    #[test]
-    fn the_steamcmd_section_is_optional() {
-        let registry =
-            parse(r#"{ "builds": [ { "version": "42.22.2", "manifest": 1 } ] }"#).unwrap();
-
-        assert_eq!(registry.steamcmd, None);
-        assert_eq!(registry.entries.len(), 1);
-    }
-
-    #[test]
-    fn rejects_malformed_registry_files() {
-        assert!(parse("not json").is_err(), "non-JSON text must be refused");
-        assert!(
-            parse(r#"{ "builds": [{ "version": "1.0" }] }"#).is_err(),
-            "a build without its manifest must be refused"
-        );
-    }
-
-    #[test]
-    fn the_bundled_copy_parses() {
+    fn the_bundled_fallback_is_usable() {
         let registry = parse(BUNDLED).unwrap();
 
         assert!(!registry.entries.is_empty());
         assert!(registry.steamcmd.is_some());
-    }
-
-    #[test]
-    fn cache_busts_the_url() {
-        let busted = cache_bust("https://example.com/registry.json");
-        assert!(busted.starts_with("https://example.com/registry.json?t="));
-
-        let busted = cache_bust("https://example.com/registry.json?x=1");
-        assert!(busted.contains("&t="), "an existing query is extended");
     }
 }

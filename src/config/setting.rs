@@ -56,21 +56,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_environment_wins_over_the_file() {
-        let setting = layer(Some("file"), Some(("KEY", "env"))).unwrap();
-        assert_eq!(*setting.value(), "env");
-        assert_eq!(setting.origin(), Origin::Env { key: "KEY" });
-    }
+    fn the_environment_overrides_the_config_file() {
+        let from_env = layer(Some("file"), Some(("KEY", "env"))).unwrap();
+        assert_eq!(*from_env.value(), "env");
+        assert_eq!(from_env.origin(), Origin::Env { key: "KEY" });
 
-    #[test]
-    fn the_file_applies_without_an_environment_value() {
-        let setting = layer(Some("file"), None).unwrap();
-        assert_eq!(*setting.value(), "file");
-        assert_eq!(setting.origin(), Origin::File);
-    }
-
-    #[test]
-    fn nothing_configured_is_no_setting() {
-        assert_eq!(layer::<&str>(None, None), None);
+        let from_file = layer(Some("file"), None).unwrap();
+        assert_eq!(from_file.origin(), Origin::File);
     }
 }

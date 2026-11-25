@@ -53,29 +53,18 @@ pub(crate) fn write_atomic(path: &Path, buf: &[u8]) -> Result<usize, io::Error> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::Scratch;
 
-    /// Rewriting an existing file succeeds and leaves no stray temp files behind.
     #[test]
-    fn write_replaces_contents_and_leaves_no_temp() -> Result<()> {
-        let base = std::env::temp_dir().join(format!("yapzm-json-{}", std::process::id()));
-        fs::create_dir_all(&base)?;
-        let path = base.join("data.json");
+    fn rewriting_a_file_replaces_it_without_leaving_temp_files() {
+        let scratch = Scratch::new();
+        let path = scratch.path("data.json");
 
-        write(&path, &serde_json::json!({ "n": 1 }))?;
-        let value: serde_json::Value = read(&path)?;
-        assert_eq!(value, serde_json::json!({ "n": 1 }));
+        write(&path, &serde_json::json!({ "version": 1 })).unwrap();
+        write(&path, &serde_json::json!({ "version": 2 })).unwrap();
 
-        write(&path, &serde_json::json!({ "n": 3 }))?;
-        let value: serde_json::Value = read(&path)?;
-        assert_eq!(value, serde_json::json!({ "n": 3 }));
-
-        let strays = fs::read_dir(&base)?
-            .map(|entry| entry.unwrap().file_name())
-            .filter(|name| name.to_string_lossy().ends_with(".tmp"))
-            .collect::<Vec<_>>();
-        assert!(strays.is_empty(), "stray temp files: {strays:?}");
-
-        fs::remove_dir_all(&base)?;
-        Ok(())
+        let stored: serde_json::Value = read(&path).unwrap();
+        assert_eq!(stored, serde_json::json!({ "version": 2 }));
+        assert_eq!(scratch.entries(), ["data.json"]);
     }
 }

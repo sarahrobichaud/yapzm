@@ -173,58 +173,46 @@ fn unmount_path(path: &Path, mount_root: &Path) -> Option<PathBuf> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn unmounts_drive_paths_into_windows_notation() {
-        let root = Path::new("/mnt");
-        assert_eq!(
-            unmount_path(Path::new("/mnt/c/Tools/steamcmd/steamcmd.exe"), root),
-            Some(PathBuf::from(r"C:\Tools\steamcmd\steamcmd.exe"))
-        );
-        assert_eq!(
-            unmount_path(Path::new("/mnt/d"), root),
-            Some(PathBuf::from(r"D:\"))
-        );
-    }
+    const MOUNT_ROOT: &str = "/mnt";
 
     #[test]
-    fn leaves_paths_outside_drive_mounts_alone() {
-        let root = Path::new("/mnt");
-        assert_eq!(
-            unmount_path(Path::new("/home/user/steamcmd.exe"), root),
-            None
-        );
-        assert_eq!(unmount_path(Path::new("/mnt/wsl/thing"), root), None);
-    }
+    fn drive_paths_translate_to_windows_notation_and_back() {
+        let mounted = Path::new("/mnt/c/Tools/steamcmd/steamcmd.exe");
+        let windows = PathBuf::from(r"C:\Tools\steamcmd\steamcmd.exe");
 
-    #[test]
-    fn keeps_only_whole_drive_mounts() {
-        let mounts = "\
-drivers /usr/lib/wsl/drivers 9p ro,aname=drivers;fmask=222 0 0
-none /mnt/wsl tmpfs rw,relatime 0 0
-none /mnt/wslg tmpfs rw,relatime 0 0
-C:\\134 /mnt/c 9p rw,aname=drvfs;path=C:\\;uid=1000 0 0
-D:\\134 /mnt/d 9p rw,aname=drvfs;path=D:\\;uid=1000 0 0
-\\134\\134server\\134share /mnt/share 9p rw,aname=drvfs;path=UNC\\server\\share 0 0
-E: /mnt/e\\040drive drvfs rw,noatime 0 0
-";
         assert_eq!(
-            parse_drive_mounts(mounts),
-            vec![
-                PathBuf::from("/mnt/c"),
-                PathBuf::from("/mnt/d"),
-                PathBuf::from("/mnt/e drive"),
-            ]
+            unmount_path(mounted, Path::new(MOUNT_ROOT)),
+            Some(windows.clone())
         );
-    }
-
-    #[test]
-    fn round_trips_through_the_mounts() {
-        let root = Path::new("/mnt");
-        let mounted = Path::new("/mnt/e/Games/steamcmd.exe");
-        let windows = unmount_path(mounted, root).unwrap();
         assert_eq!(
-            mount_windows_path(&windows.to_string_lossy(), root),
+            mount_windows_path(&windows.to_string_lossy(), Path::new(MOUNT_ROOT)),
             Some(mounted.to_path_buf())
+        );
+    }
+
+    #[test]
+    fn paths_outside_a_drive_mount_have_no_windows_notation() {
+        for linux_only in ["/home/user/steamcmd", "/mnt/wsl/state"] {
+            assert_eq!(
+                unmount_path(Path::new(linux_only), Path::new(MOUNT_ROOT)),
+                None,
+                "{linux_only}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_whole_drive_mounts_are_reported() {
+        let mount_table = r"
+none /mnt/wsl tmpfs rw,relatime 0 0
+C:\134 /mnt/c 9p rw,aname=drvfs;path=C:\;uid=1000 0 0
+\134\134server\134share /mnt/share 9p rw,aname=drvfs;path=UNC\server\share 0 0
+E: /mnt/e\040drive drvfs rw,noatime 0 0
+";
+
+        assert_eq!(
+            parse_drive_mounts(mount_table),
+            [PathBuf::from("/mnt/c"), PathBuf::from("/mnt/e drive")]
         );
     }
 }

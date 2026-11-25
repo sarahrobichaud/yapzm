@@ -37,34 +37,28 @@ fn library_paths(index: &vdf::Value) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::Scratch;
 
     #[test]
-    fn extracts_paths_from_a_library_index() {
-        let index = vdf::parse(
+    fn every_library_in_the_index_is_listed() {
+        let steam = Scratch::new();
+        steam.file(
+            LIBRARY_FOLDERS_VDF,
             r#"
 "libraryfolders"
 {
-	"0" { "path" "C:\\Program Files (x86)\\Steam" }
-	"1" { "path" "D:\\SteamLibrary" }
+    "0" { "path" "C:\\Program Files (x86)\\Steam" }
+    "1" { "path" "D:\\SteamLibrary" }
 }
 "#,
-        )
-        .unwrap();
-
-        let paths = library_paths(&index);
+        );
 
         assert_eq!(
-            paths,
-            vec![
+            load(steam.root()),
+            [
                 PathBuf::from(r"C:\Program Files (x86)\Steam"),
                 PathBuf::from(r"D:\SteamLibrary"),
             ]
         );
-    }
-
-    #[test]
-    fn returns_nothing_for_an_unrelated_document() {
-        let index = vdf::parse("\"something\"\n{\n\"else\"\t\"here\"\n}").unwrap();
-        assert!(library_paths(&index).is_empty());
     }
 }

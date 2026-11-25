@@ -15,3 +15,6 @@ pub mod steamcmd;
 pub mod zomboid;
 
 pub mod components;
+
+#[cfg(test)]
+mod testing;

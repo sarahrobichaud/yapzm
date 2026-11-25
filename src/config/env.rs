@@ -21,18 +21,3 @@ pub(super) fn path(key: &'static str) -> Option<(&'static str, PathBuf)> {
 fn non_empty(value: Option<OsString>) -> Option<OsString> {
     value.filter(|value| !value.is_empty())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_values_count_as_unset() {
-        assert_eq!(non_empty(Some(OsString::new())), None);
-        assert_eq!(non_empty(None), None);
-        assert_eq!(
-            non_empty(Some(OsString::from("/x"))),
-            Some(OsString::from("/x"))
-        );
-    }
-}

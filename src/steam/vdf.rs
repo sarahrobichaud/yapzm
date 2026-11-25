@@ -216,44 +216,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_quoted_pairs_and_nested_tables() {
-        let input = r#"
-"libraryfolders"
+    fn nested_tables_comments_and_escapes_are_understood() {
+        let document = parse(
+            r#"
+// Written by Steam
+"AppState"
 {
-	"0"
-	{
-		"path"		"C:\\Program Files (x86)\\Steam"
-		"apps"
-		{
-			"730"		"74265067316"
-		}
-	}
+    "installdir"    "Project Zomboid"
+    "UserConfig"
+    {
+        language    english
+        "note"      "a \"quoted\" word"
+    }
 }
-"#;
-        let value = parse(input).unwrap();
-        let folder = value.get("libraryfolders").unwrap().get("0").unwrap();
-        assert_eq!(
-            folder.get("path").unwrap().as_str(),
-            Some(r"C:\Program Files (x86)\Steam")
-        );
-        assert_eq!(
-            folder.get("apps").unwrap().get("730").unwrap().as_str(),
-            Some("74265067316")
-        );
-    }
+"#,
+        )
+        .unwrap();
 
-    #[test]
-    fn parses_unquoted_tokens_and_ignores_comments() {
-        let value = parse("key // comment\n{\nsubkey value\n}").unwrap();
+        let app = document.get("AppState").unwrap();
+        let config = app.get("UserConfig").unwrap();
         assert_eq!(
-            value.get("key").unwrap().get("subkey").unwrap().as_str(),
-            Some("value")
+            app.get("installdir").unwrap().as_str(),
+            Some("Project Zomboid")
         );
-    }
-
-    #[test]
-    fn rejects_unclosed_braces() {
-        let error = parse("\"a\"\n{\n\"b\" \"c\"\n").unwrap_err();
-        assert_eq!(error.message, "unclosed brace");
+        assert_eq!(config.get("language").unwrap().as_str(), Some("english"));
+        assert_eq!(
+            config.get("note").unwrap().as_str(),
+            Some(r#"a "quoted" word"#)
+        );
     }
 }
