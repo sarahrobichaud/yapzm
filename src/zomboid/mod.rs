@@ -6,4 +6,4 @@ pub mod workshop;
 
 pub use install::Install;
 pub use version::{GameVersion, VersionError};
-pub use workshop::Workshop;
+pub use workshop::{Workshop, WorkshopItem, WorkshopRecordError};

@@ -12,6 +12,8 @@ pub mod steam;
 
 pub mod steamcmd;
 
+pub mod store;
+
 pub mod zomboid;
 
 pub mod components;
