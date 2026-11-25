@@ -53,11 +53,11 @@ fn report_clients(config: &Config, steam: &Detection<SteamClient>, is_verbose: b
 
 /// Reports where steamcmd was found, or why it is unusable.
 fn report_steamcmd(config: &Config, is_verbose: bool) {
-    print_section("SteamCMD Status");
+    print_section(&format!("{} Status", Steamcmd::NAME));
 
     match Steamcmd::detect(config.steamcmd_path().map(Setting::as_path)) {
         Detection::Ready(steamcmd) => {
-            println!("[x] SteamCMD - detected");
+            println!("[x] {} - detected", Steamcmd::NAME);
             if is_verbose {
                 println!("    Location: {}", steamcmd.path().display());
             }
@@ -73,17 +73,17 @@ fn report_steamcmd(config: &Config, is_verbose: bool) {
 
 /// Reports the workshop content, with guidance when it cannot be detected.
 fn report_workshop(steam: Option<&SteamClient>, is_verbose: bool) {
-    print_section("Steam Workshop Integration Status");
+    print_section(&format!("{} Integration Status", Workshop::NAME));
 
     let Some(steam) = steam else {
-        println!("[ ] Steam Workshop - install Steam");
+        println!("[ ] {} - install {}", Workshop::NAME, SteamClient::NAME);
         println!();
         return;
     };
 
     match Workshop::detect(steam) {
         Detection::Ready(workshop) => {
-            println!("[x] Steam Workshop - Enabled");
+            println!("[x] {} - Enabled", Workshop::NAME);
             if is_verbose {
                 println!("    Location: {}", workshop.path().display());
             }
@@ -131,14 +131,15 @@ fn print_steam_client(steam: &SteamClient, is_verbose: bool) {
     let libraries = steam.libraries();
     if !is_verbose {
         println!(
-            "[x] Steam - {} {}",
+            "[x] {} - {} {}",
+            SteamClient::NAME,
             libraries.len(),
             plural(libraries.len(), "library", "libraries")
         );
         return;
     }
 
-    println!("[x] Steam:");
+    println!("[x] {}:", SteamClient::NAME);
     println!("    Location: {}", steam.root().display());
     println!("    Library locations:");
     for library in libraries {
@@ -148,7 +149,7 @@ fn print_steam_client(steam: &SteamClient, is_verbose: bool) {
 
 /// Prints a valid install's location and game version.
 fn print_install(install: &Install, version: &Result<GameVersion, VersionError>, is_verbose: bool) {
-    println!("[x] {} - from Steam", Install::NAME);
+    println!("[x] {} - from {}", Install::NAME, SteamClient::NAME);
     if is_verbose {
         println!("    Location: {}", install.path().display());
     }
