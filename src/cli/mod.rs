@@ -5,6 +5,7 @@ mod mods;
 mod output;
 mod progress;
 mod steamcmd;
+mod version;
 
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
@@ -60,6 +61,11 @@ enum Commands {
         #[command(subcommand)]
         command: mods::ModsCommand,
     },
+    /// Detect game versions and copy them into the local store
+    Version {
+        #[command(subcommand)]
+        command: version::VersionCommand,
+    },
 }
 
 /// Parses the command line and runs the requested command.
@@ -101,6 +107,7 @@ pub fn run() -> Result<()> {
         Commands::Health => health::run(&input),
         Commands::Steamcmd { command } => steamcmd::run(&input, command),
         Commands::Mods { command } => mods::run(&input, command),
+        Commands::Version { command } => version::run(&input, command),
     }
 }
 

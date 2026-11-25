@@ -4,12 +4,11 @@ use anyhow::{Context as _, Result};
 use clap::Subcommand;
 
 use crate::cli::CommandInput;
-use crate::cli::output::{plural, print_header};
+use crate::cli::output::{plural, print_header, print_wsl_copy_note};
 use crate::cli::progress::CopyBar;
 use crate::components::Component;
 use crate::context::Context;
-use crate::platform;
-use crate::store::CopyOutcome;
+use crate::store::WorkshopCopyOutcome;
 use crate::zomboid::Workshop;
 
 #[derive(Subcommand)]
@@ -46,13 +45,9 @@ fn copy_workshop(context: &Context) -> Result<()> {
         .context("failed to read the installed workshop items")?;
 
     print_header("Copy Workshop Items");
-    if platform::is_wsl() {
-        println!("Note: copying from WSL reads through the Windows drive mounts and is slow.");
-        println!("      Run yapzm.exe from Windows for much faster copies.");
-        println!();
-    }
+    print_wsl_copy_note();
 
-    let mut progress = CopyBar::new();
+    let mut progress = CopyBar::new("Measuring workshop items...");
     let outcomes = context
         .store
         .copy_workshop_items(&items, &mut progress)
@@ -60,7 +55,7 @@ fn copy_workshop(context: &Context) -> Result<()> {
 
     let mut copied = 0;
     for outcome in &outcomes {
-        if let CopyOutcome::Copied { id, time_updated } = outcome {
+        if let WorkshopCopyOutcome::Copied { id, time_updated } = outcome {
             println!("[x] {id} - stored version {time_updated}");
             copied += 1;
         }

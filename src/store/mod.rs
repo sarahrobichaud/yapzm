@@ -1,5 +1,7 @@
-//! The local store holding the app's own copies of mods.
+//! The local store holding the app's own copies of mods and game versions.
 
+mod copy;
+mod game;
 mod workshop;
 
 use std::io;
@@ -9,13 +11,24 @@ use crate::components::{
     Component, Location, Missing, Provision, Provisioned, Requirement, Source,
 };
 
-pub use workshop::{CopyOutcome, CopyProgress};
+pub use copy::CopyProgress;
+pub use game::GameCopyOutcome;
+pub use workshop::WorkshopCopyOutcome;
 
 /// The store directory's name inside the data directory.
 const STORE_DIR: &str = ".store";
 
 /// The directory holding workshop items inside the store.
 const WORKSHOP_DIR: &str = "workshop";
+
+/// The directory holding game versions inside the store.
+const GAME_DIR: &str = "game";
+
+/// The directories every store holds.
+const LAYOUT: [(&str, &str); 2] = [
+    (WORKSHOP_DIR, "workshop directory"),
+    (GAME_DIR, "game directory"),
+];
 
 /// A store on disk with its expected layout.
 #[derive(Debug)]
@@ -41,6 +54,10 @@ pub enum StoreError {
         #[source]
         source: io::Error,
     },
+
+    /// A game version cannot safely name a folder in the store.
+    #[error("the game version {0:?} cannot name a store folder")]
+    InvalidVersion(String),
 }
 
 impl Store {
@@ -59,6 +76,16 @@ impl Store {
         self.workshop_dir()
             .join(id.to_string())
             .join(time_updated.to_string())
+    }
+
+    /// The directory holding one folder per stored game version.
+    pub fn game_dir(&self) -> PathBuf {
+        self.root.join(GAME_DIR)
+    }
+
+    /// The directory holding the files of one stored game version.
+    pub fn game_version_dir(&self, version: &str) -> PathBuf {
+        self.game_dir().join(version)
     }
 }
 
@@ -83,12 +110,15 @@ impl Component for Store {
         })
     }
 
-    /// Requires the directory for workshop items.
+    /// Requires every directory of the store layout.
     fn validate(location: &Location<()>) -> Result<Self, Vec<Requirement>> {
-        if !location.path.join(WORKSHOP_DIR).is_dir() {
-            return Err(vec![Requirement {
-                name: "workshop directory",
-            }]);
+        let unmet: Vec<Requirement> = LAYOUT
+            .iter()
+            .filter(|(dir, _)| !location.path.join(dir).is_dir())
+            .map(|&(_, name)| Requirement { name })
+            .collect();
+        if !unmet.is_empty() {
+            return Err(unmet);
         }
         Ok(Self {
             root: location.path.clone(),
@@ -107,11 +137,10 @@ impl Provision for Store {
         }
 
         let root = data_dir.join(STORE_DIR);
-        let workshop_dir = root.join(WORKSHOP_DIR);
-        std::fs::create_dir_all(&workshop_dir).map_err(|source| StoreError::Write {
-            path: workshop_dir,
-            source,
-        })?;
+        for (dir, _) in LAYOUT {
+            let path = root.join(dir);
+            std::fs::create_dir_all(&path).map_err(|source| StoreError::Write { path, source })?;
+        }
         Ok(Provisioned::Created(Self { root }))
     }
 }
@@ -134,6 +163,7 @@ mod tests {
             Ok(Provisioned::Created(_))
         ));
         assert!(scratch.path(".store/workshop").is_dir());
+        assert!(scratch.path(".store/game").is_dir());
         assert!(matches!(
             Store::provision(scratch.root()),
             Ok(Provisioned::AlreadyPresent(_))

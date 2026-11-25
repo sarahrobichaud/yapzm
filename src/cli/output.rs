@@ -34,3 +34,12 @@ pub(crate) fn plural<'a>(count: usize, singular: &'a str, plural: &'a str) -> &'
         _ => plural,
     }
 }
+
+/// Warns that copying from WSL is slow, when running under WSL.
+pub(crate) fn print_wsl_copy_note() {
+    if crate::platform::is_wsl() {
+        println!("Note: copying from WSL reads through the Windows drive mounts and is slow.");
+        println!("      Run yapzm.exe from Windows for much faster copies.");
+        println!();
+    }
+}

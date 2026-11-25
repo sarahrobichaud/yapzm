@@ -3,7 +3,8 @@
 use std::io::{Cursor, Write as _};
 use std::path::{Path, PathBuf};
 
-use crate::components::{Location, Source};
+use crate::components::{Location, Provision, Provisioned, Source};
+use crate::store::{CopyProgress, Store};
 
 /// A temporary directory tree, deleted when dropped.
 pub struct Scratch {
@@ -80,4 +81,35 @@ pub fn zip_archive(entries: &[(&str, &str)]) -> Vec<u8> {
     }
     writer.finish().expect("finishing the zip archive");
     bytes
+}
+
+/// A freshly provisioned store inside the scratch directory.
+pub fn provisioned_store(scratch: &Scratch) -> Store {
+    match Store::provision(&scratch.dir("data")).expect("provisioning a scratch store") {
+        Provisioned::Created(store) | Provisioned::AlreadyPresent(store) => store,
+    }
+}
+
+/// Copy progress that records what a copy reported.
+#[derive(Default)]
+pub struct RecordedProgress {
+    pub total_bytes: u64,
+    pub advanced_bytes: u64,
+    pub items_started: Vec<String>,
+}
+
+impl CopyProgress for RecordedProgress {
+    fn started(&mut self, total_bytes: u64) {
+        self.total_bytes = total_bytes;
+    }
+
+    fn item_started(&mut self, label: &str) {
+        self.items_started.push(label.to_owned());
+    }
+
+    fn advanced(&mut self, bytes: u64) {
+        self.advanced_bytes += bytes;
+    }
+
+    fn finished(&mut self) {}
 }
