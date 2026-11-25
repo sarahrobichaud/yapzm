@@ -23,7 +23,7 @@ YAPZM only works with the Steam version of Project Zomboid. GOG and other versio
 
 ## Status
 
-YAPZM is in early development, see the [roadmap](/development/roadmap/) for what remains before beta. A client with a user interface is planned for the future.
+YAPZM is in early development. A client with a user interface is planned for the future.
 
 ## AI disclosure
 

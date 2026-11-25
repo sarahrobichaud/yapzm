@@ -21,3 +21,12 @@ Apply these rules when writing or editing source files.
 ## Code
 
 - Write expressive, descriptive code that prioritizes readability over being concise or clever.
+
+## Environment
+
+- Run Clippy and rustfmt through the Nix development shell: `nix develop -c cargo clippy` and `nix develop -c cargo fmt`.
+
+## Repository layout
+
+- `proto/` contains a prototype used for exploration and reference.
+- `src/` contains the real implementation. New work goes here, not in the prototype.
