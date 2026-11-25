@@ -1028,8 +1028,14 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs",
+ "serde",
+ "serde_json",
+ "sha2",
  "thiserror",
+ "ureq",
+ "windows-sys 0.61.2",
  "winreg",
+ "zip",
 ]
 
 [[package]]

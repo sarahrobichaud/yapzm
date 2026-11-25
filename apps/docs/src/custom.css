@@ -1,0 +1,30 @@
+/* Theme overrides: replaces Starlight's blue accent with red,
+   with darker backgrounds in dark mode. */
+:root {
+	--sl-color-black: hsl(224, 12%, 7%);
+	--sl-color-gray-6: hsl(224, 14%, 12%);
+	--sl-color-gray-5: hsl(224, 10%, 18%);
+
+	--sl-color-accent-low: hsl(0, 54%, 20%);
+	--sl-color-accent: hsl(0, 100%, 60%);
+	--sl-color-accent-high: hsl(0, 100%, 85%);
+}
+
+:root[data-theme='light'] {
+	--sl-color-black: hsl(0, 0%, 100%);
+	--sl-color-gray-6: hsl(224, 20%, 94%);
+	--sl-color-gray-5: hsl(224, 6%, 77%);
+
+	--sl-color-accent-high: hsl(0, 80%, 30%);
+	--sl-color-accent: hsl(0, 90%, 60%);
+	--sl-color-accent-low: hsl(0, 88%, 90%);
+}
+
+/* Starlight's print stylesheet hardcodes the accent outside any cascade layer. */
+@media print {
+	:root:root {
+		--sl-color-accent-low: hsl(0, 88%, 90%);
+		--sl-color-accent: hsl(0, 90%, 60%);
+		--sl-color-accent-high: hsl(0, 80%, 30%);
+	}
+}

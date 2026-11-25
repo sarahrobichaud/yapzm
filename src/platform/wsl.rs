@@ -1,18 +1,7 @@
+//! The bridge to the Windows host under WSL: detection, registry reads, and drive mounts.
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
-
-use crate::config;
-
-use super::{SteamInstall, SteamKind, validate};
-
-/// Maps a Windows path onto the drive mount root, passing through paths without a drive.
-pub(super) fn translate_windows_path(path: &Path) -> PathBuf {
-    if !is_wsl() {
-        return path.to_path_buf();
-    }
-    mounted_windows_path(&path.to_string_lossy(), &automount_root())
-        .unwrap_or_else(|| path.to_path_buf())
-}
 
 /// Reports whether this process runs inside WSL.
 pub(super) fn is_wsl() -> bool {
@@ -21,43 +10,40 @@ pub(super) fn is_wsl() -> bool {
         .unwrap_or(false)
 }
 
-/// Locates the Windows Steam install via the configured override, registry interop, then the C mount.
-pub(super) fn locate_windows_steam() -> Option<SteamInstall> {
-    if let Some(install) = override_root().and_then(|root| validate(&root, SteamKind::Native)) {
-        return Some(install);
-    }
-    if let Some(root) = registry_root()
-        && let Some(install) = validate(&root, SteamKind::Native)
-    {
-        return Some(install);
-    }
-    for root in c_drive_candidates() {
-        if let Some(install) = validate(&root, SteamKind::Native) {
-            return Some(install);
-        }
-    }
-    None
-}
-
-/// Reads SteamPath from the Windows registry through WSL interop.
-fn registry_root() -> Option<PathBuf> {
+/// Reads a REG_SZ value from HKCU through WSL interop.
+pub(super) fn query_hkcu(key: &str, value: &str) -> Option<String> {
     let output = Command::new("reg.exe")
-        .args(["query", r"HKCU\Software\Valve\Steam", "/v", "SteamPath"])
+        .args(["query", key, "/v", value])
         .output()
         .ok()?;
+
     if !output.status.success() {
         return None;
     }
+
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let line = stdout
+    stdout
         .lines()
-        .find(|line| line.contains("SteamPath") && line.contains("REG_SZ"))?;
-    let windows_path = line.split_once("REG_SZ")?.1.trim();
-    mounted_windows_path(windows_path, &automount_root())
+        .find(|line| line.contains(value) && line.contains("REG_SZ"))
+        .and_then(|line| line.split_once("REG_SZ"))
+        .map(|(_, value)| value.trim().to_owned())
 }
 
-/// Maps a Windows path onto the drive mount root, rejecting paths without a drive.
-fn mounted_windows_path(path: &str, mount_root: &Path) -> Option<PathBuf> {
+/// Maps a Windows path onto the drive mounts, passing through paths without a drive letter.
+pub(super) fn from_windows_notation(path: &Path) -> PathBuf {
+    if !is_wsl() {
+        return path.to_path_buf();
+    }
+    mounted_path(&path.to_string_lossy()).unwrap_or_else(|| path.to_path_buf())
+}
+
+/// Maps a Windows path onto the drive mounts, rejecting paths without a drive.
+pub(super) fn mounted_path(windows_path: &str) -> Option<PathBuf> {
+    mount_windows_path(windows_path, &mount_root())
+}
+
+/// Maps a Windows path under a given mount root, rejecting paths without a drive.
+fn mount_windows_path(path: &str, mount_root: &Path) -> Option<PathBuf> {
     let normalized = path.replace('/', "\\");
     let mut parts = normalized.split('\\').filter(|part| !part.is_empty());
     let drive = parts.next()?;
@@ -74,8 +60,8 @@ fn mounted_windows_path(path: &str, mount_root: &Path) -> Option<PathBuf> {
     Some(mounted)
 }
 
-/// Returns the drive mount root, honoring a custom root declared in WSL's configuration.
-fn automount_root() -> PathBuf {
+/// The directory the Windows drives are mounted under.
+pub(super) fn mount_root() -> PathBuf {
     match std::fs::read_to_string("/etc/wsl.conf") {
         Ok(conf) => parse_automount_root(&conf),
         Err(_) => PathBuf::from("/mnt"),
@@ -102,19 +88,85 @@ fn parse_automount_root(conf: &str) -> PathBuf {
     PathBuf::from("/mnt")
 }
 
-/// Translates the configured Steam directory into a WSL path when given as a Windows path.
-fn override_root() -> Option<PathBuf> {
-    let dir = config::steam_dir()?;
-    Some(mounted_windows_path(&dir.to_string_lossy(), &automount_root()).unwrap_or(dir))
+/// The mount points of Windows drive letters currently mounted into WSL.
+pub(super) fn drive_mounts() -> Vec<PathBuf> {
+    std::fs::read_to_string("/proc/mounts")
+        .map(|mounts| parse_drive_mounts(&mounts))
+        .unwrap_or_default()
 }
 
-/// Probes the C: mount's default Steam directories.
-fn c_drive_candidates() -> Vec<PathBuf> {
-    let mount = automount_root().join("c");
-    ["Program Files (x86)", "Program Files"]
-        .iter()
-        .map(|dir| mount.join(dir).join("Steam"))
+/// Parses mount table contents into the mount points backed by a whole Windows drive.
+fn parse_drive_mounts(mounts: &str) -> Vec<PathBuf> {
+    mounts
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let source = fields.next()?;
+            let mount_point = fields.next()?;
+            let filesystem = fields.next()?;
+            let options = fields.next()?;
+            let is_drvfs = filesystem == "drvfs" || options.contains("aname=drvfs");
+            (is_drvfs && is_drive_root(&unescape_mount_field(source)))
+                .then(|| PathBuf::from(unescape_mount_field(mount_point)))
+        })
         .collect()
+}
+
+/// Reports whether a mount source names a drive letter root rather than a share or subdirectory.
+fn is_drive_root(source: &str) -> bool {
+    let mut chars = source.chars();
+    matches!(
+        (chars.next(), chars.next(), chars.next(), chars.next()),
+        (Some(letter), Some(':'), Some('\\') | None, None) if letter.is_ascii_alphabetic()
+    )
+}
+
+/// Decodes the octal escapes the kernel uses for special characters in mount table fields.
+fn unescape_mount_field(field: &str) -> String {
+    let mut decoded = String::with_capacity(field.len());
+    let mut rest = field;
+    while let Some(index) = rest.find('\\') {
+        decoded.push_str(&rest[..index]);
+        let escape = rest.get(index + 1..index + 4);
+        match escape.and_then(|digits| u8::from_str_radix(digits, 8).ok()) {
+            Some(byte) => {
+                decoded.push(byte as char);
+                rest = &rest[index + 4..];
+            }
+            None => {
+                decoded.push('\\');
+                rest = &rest[index + 1..];
+            }
+        }
+    }
+    decoded.push_str(rest);
+    decoded
+}
+
+/// Maps a path under the drive mounts to Windows notation, passing through other paths.
+pub(super) fn to_windows_notation(path: &Path) -> PathBuf {
+    if !is_wsl() {
+        return path.to_path_buf();
+    }
+    unmount_path(path, &mount_root()).unwrap_or_else(|| path.to_path_buf())
+}
+
+/// Maps a path under a given mount root to Windows notation, rejecting paths outside a drive mount.
+fn unmount_path(path: &Path, mount_root: &Path) -> Option<PathBuf> {
+    let mut components = path.strip_prefix(mount_root).ok()?.components();
+    let drive = components.next()?.as_os_str().to_str()?;
+    let mut chars = drive.chars();
+    let letter = chars.next()?;
+    if chars.next().is_some() || !letter.is_ascii_alphabetic() {
+        return None;
+    }
+
+    let mut windows_path = format!("{}:\\", letter.to_ascii_uppercase());
+    let parts: Vec<String> = components
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    windows_path.push_str(&parts.join("\\"));
+    Some(PathBuf::from(windows_path))
 }
 
 #[cfg(test)]
@@ -122,90 +174,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn maps_windows_paths_onto_the_mount_root() {
+    fn unmounts_drive_paths_into_windows_notation() {
         let root = Path::new("/mnt");
         assert_eq!(
-            mounted_windows_path(r"C:\Steam", root),
-            Some(PathBuf::from("/mnt/c/Steam"))
+            unmount_path(Path::new("/mnt/c/Tools/steamcmd/steamcmd.exe"), root),
+            Some(PathBuf::from(r"C:\Tools\steamcmd\steamcmd.exe"))
         );
         assert_eq!(
-            mounted_windows_path("D:/Games/Steam", root),
-            Some(PathBuf::from("/mnt/d/Games/Steam"))
+            unmount_path(Path::new("/mnt/d"), root),
+            Some(PathBuf::from(r"D:\"))
         );
     }
 
     #[test]
-    fn accepts_a_bare_drive_and_a_lowercase_letter() {
+    fn leaves_paths_outside_drive_mounts_alone() {
         let root = Path::new("/mnt");
         assert_eq!(
-            mounted_windows_path("C:", root),
-            Some(PathBuf::from("/mnt/c"))
+            unmount_path(Path::new("/home/user/steamcmd.exe"), root),
+            None
         );
+        assert_eq!(unmount_path(Path::new("/mnt/wsl/thing"), root), None);
+    }
+
+    #[test]
+    fn keeps_only_whole_drive_mounts() {
+        let mounts = "\
+drivers /usr/lib/wsl/drivers 9p ro,aname=drivers;fmask=222 0 0
+none /mnt/wsl tmpfs rw,relatime 0 0
+none /mnt/wslg tmpfs rw,relatime 0 0
+C:\\134 /mnt/c 9p rw,aname=drvfs;path=C:\\;uid=1000 0 0
+D:\\134 /mnt/d 9p rw,aname=drvfs;path=D:\\;uid=1000 0 0
+\\134\\134server\\134share /mnt/share 9p rw,aname=drvfs;path=UNC\\server\\share 0 0
+E: /mnt/e\\040drive drvfs rw,noatime 0 0
+";
         assert_eq!(
-            mounted_windows_path(r"c:\Steam", root),
-            Some(PathBuf::from("/mnt/c/Steam"))
+            parse_drive_mounts(mounts),
+            vec![
+                PathBuf::from("/mnt/c"),
+                PathBuf::from("/mnt/d"),
+                PathBuf::from("/mnt/e drive"),
+            ]
         );
     }
 
     #[test]
-    fn rejects_paths_without_a_drive_prefix() {
+    fn round_trips_through_the_mounts() {
         let root = Path::new("/mnt");
-        assert_eq!(mounted_windows_path(r"\\server\share\Steam", root), None);
-        assert_eq!(mounted_windows_path("Steam", root), None);
-        assert_eq!(mounted_windows_path("", root), None);
-    }
-
-    #[test]
-    fn automount_root_defaults_when_undeclared() {
-        assert_eq!(parse_automount_root(""), PathBuf::from("/mnt"));
+        let mounted = Path::new("/mnt/e/Games/steamcmd.exe");
+        let windows = unmount_path(mounted, root).unwrap();
         assert_eq!(
-            parse_automount_root(
-                r#"
-[interop]
-root = "/ignored"
-"#
-            ),
-            PathBuf::from("/mnt")
-        );
-    }
-
-    #[test]
-    fn automount_root_reads_the_declared_root() {
-        assert_eq!(
-            parse_automount_root(
-                r#"
-[automount]
-root = "/windir"
-"#
-            ),
-            PathBuf::from("/windir")
-        );
-        // The section header matches case-insensitively.
-        assert_eq!(
-            parse_automount_root(
-                r#"
-[Automount]
-root=/wind
-"#
-            ),
-            PathBuf::from("/wind")
-        );
-    }
-
-    #[test]
-    fn automount_root_ignores_roots_outside_the_section() {
-        // A root before any section header, or after the section closes, is ignored.
-        assert_eq!(
-            parse_automount_root(
-                r#"
-root = "/early"
-[automount]
-root = "/wind"
-[interop]
-root = "/late"
-"#
-            ),
-            PathBuf::from("/wind")
+            mount_windows_path(&windows.to_string_lossy(), root),
+            Some(mounted.to_path_buf())
         );
     }
 }
