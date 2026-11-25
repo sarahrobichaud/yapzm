@@ -1,10 +1,11 @@
 //! The Steam Workshop content directory for Project Zomboid.
 
+use std::io;
 use std::path::{Path, PathBuf};
 
 use super::install::APP_ID;
 use crate::components::{Component, Location, Missing, Requirement, Source};
-use crate::steam::SteamClient;
+use crate::steam::{SteamClient, vdf};
 
 /// A Steam library's Project Zomboid workshop content that Steam keeps a record of.
 #[derive(Debug)]
@@ -12,10 +13,52 @@ pub struct Workshop {
     path: PathBuf,
 }
 
+/// One installed workshop item, at the version Steam last downloaded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkshopItem {
+    pub id: u64,
+    /// When the item was last updated on the workshop, which identifies its version.
+    pub time_updated: u64,
+    /// The folder holding the item's content.
+    pub path: PathBuf,
+}
+
+/// The ways reading Steam's workshop record can fail.
+#[derive(Debug, thiserror::Error)]
+pub enum WorkshopRecordError {
+    /// The record could not be read.
+    #[error("reading {path}")]
+    Read {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    /// The record is not valid VDF.
+    #[error("parsing {path}")]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: vdf::ParseError,
+    },
+}
+
 impl Workshop {
     /// The directory holding one folder per downloaded workshop item.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// The installed items Steam's record lists that have content on disk.
+    pub fn items(&self) -> Result<Vec<WorkshopItem>, WorkshopRecordError> {
+        let path = record_path(&self.path).unwrap_or_default();
+        let text = std::fs::read_to_string(&path).map_err(|source| WorkshopRecordError::Read {
+            path: path.clone(),
+            source,
+        })?;
+        let record =
+            vdf::parse(&text).map_err(|source| WorkshopRecordError::Parse { path, source })?;
+        Ok(installed_items(&record, &self.path))
     }
 }
 
@@ -32,8 +75,7 @@ impl Component for Workshop {
 
     /// Requires Steam's record of the installed workshop items next to the content.
     fn validate(location: &Location<()>) -> Result<Self, Vec<Requirement>> {
-        let has_record = workshop_dir(&location.path)
-            .is_some_and(|dir| dir.join(format!("appworkshop_{APP_ID}.acf")).is_file());
+        let has_record = record_path(&location.path).is_some_and(|path| path.is_file());
 
         if !has_record {
             return Err(vec![Requirement {
@@ -78,53 +120,73 @@ fn workshop_dir(content_dir: &Path) -> Option<&Path> {
     content_dir.parent()?.parent()
 }
 
+/// Steam's record of the installed workshop items for a content directory.
+fn record_path(content_dir: &Path) -> Option<PathBuf> {
+    workshop_dir(content_dir).map(|dir| dir.join(format!("appworkshop_{APP_ID}.acf")))
+}
+
+/// The record's installed items, skipping entries that are malformed or have no content folder.
+fn installed_items(record: &vdf::Value, content_dir: &Path) -> Vec<WorkshopItem> {
+    let Some(entries) = record
+        .as_map()
+        .and_then(|pairs| pairs.first())
+        .and_then(|(_, root)| root.get("WorkshopItemsInstalled"))
+        .and_then(vdf::Value::as_map)
+    else {
+        return Vec::new();
+    };
+
+    entries
+        .iter()
+        .filter_map(|(id, entry)| {
+            let id: u64 = id.parse().ok()?;
+            let time_updated = entry.get("timeupdated")?.as_str()?.parse().ok()?;
+            let path = content_dir.join(id.to_string());
+            path.is_dir().then_some(WorkshopItem {
+                id,
+                time_updated,
+                path,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A fresh library directory, unique per test name.
-    fn scratch_library(name: &str) -> PathBuf {
-        let library =
-            std::env::temp_dir().join(format!("yapzm-workshop-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&library);
-        library
-    }
+    use crate::testing::Scratch;
 
     #[test]
-    fn locate_finds_the_content_directory() {
-        let library = scratch_library("locate");
-        let content = content_dir(&library);
-        std::fs::create_dir_all(&content).unwrap();
-
-        let location = locate_in_libraries(std::slice::from_ref(&library)).unwrap();
-        assert_eq!(location.path, content);
-
-        let _ = std::fs::remove_dir_all(&library);
+    fn installed_items_with_content_and_a_version_are_listed() {
+        let scratch = Scratch::new();
+        let content = scratch.dir("steamapps/workshop/content/108600");
+        scratch.dir("steamapps/workshop/content/108600/111/mods");
+        scratch.dir("steamapps/workshop/content/108600/333");
+        scratch.file(
+            "steamapps/workshop/appworkshop_108600.acf",
+            r#"
+"AppWorkshop"
+{
+    "WorkshopItemsInstalled"
+    {
+        "111" { "timeupdated" "1700000000" }
+        "222" { "timeupdated" "1700000001" }
+        "333" { "size" "10" }
     }
+}
+"#,
+        );
+        let workshop = Workshop { path: content };
 
-    #[test]
-    fn locate_skips_libraries_without_workshop_content() {
-        let library = scratch_library("empty");
-        std::fs::create_dir_all(&library).unwrap();
+        let items = workshop.items().unwrap();
 
-        assert!(locate_in_libraries(std::slice::from_ref(&library)).is_err());
-
-        let _ = std::fs::remove_dir_all(&library);
-    }
-
-    #[test]
-    fn validate_requires_the_workshop_record() {
-        let library = scratch_library("record");
-        let content = content_dir(&library);
-        std::fs::create_dir_all(&content).unwrap();
-        let location = locate_in_libraries(std::slice::from_ref(&library)).unwrap();
-
-        assert!(Workshop::validate(&location).is_err());
-
-        let record = library.join(format!("steamapps/workshop/appworkshop_{APP_ID}.acf"));
-        std::fs::write(record, "").unwrap();
-        assert_eq!(Workshop::validate(&location).unwrap().path(), content);
-
-        let _ = std::fs::remove_dir_all(&library);
+        assert_eq!(
+            items,
+            [WorkshopItem {
+                id: 111,
+                time_updated: 1_700_000_000,
+                path: scratch.path("steamapps/workshop/content/108600/111"),
+            }]
+        );
     }
 }

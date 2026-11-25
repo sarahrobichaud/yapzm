@@ -1,6 +1,7 @@
 //! Per-platform knowledge of where components live and how to read paths on this system.
 
 mod config_dir;
+mod data_dir;
 mod paths;
 mod steam;
 mod steamcmd;
@@ -9,6 +10,7 @@ mod steamcmd;
 mod wsl;
 
 pub use config_dir::get_config_dir;
+pub use data_dir::get_data_dir;
 pub(crate) use paths::path_lookup;
 pub use paths::{canonical_path, from_windows_notation, to_windows_notation};
 pub use steam::{SteamKind, steam_candidates, steam_kind};

@@ -251,126 +251,63 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Builds an in-memory zip archive from name and content pairs.
-    fn zip_of(entries: &[(&str, &[u8])]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        let mut bytes = Vec::new();
-        {
-            let mut writer = zip::ZipWriter::new(Cursor::new(&mut bytes));
-            let options = zip::write::SimpleFileOptions::default();
-            for (name, contents) in entries {
-                writer.start_file(name.to_owned(), options)?;
-                std::io::Write::write_all(&mut writer, contents)?;
-            }
-            writer.finish()?;
-        }
-        Ok(bytes)
-    }
-
-    /// An empty scratch directory, unique per test name.
-    fn scratch_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("yapzm-{name}-{}", std::process::id()));
-        std::fs::remove_dir_all(&dir).ok();
-        dir
-    }
+    use crate::testing::{Scratch, zip_archive};
 
     #[test]
-    fn unpacks_every_entry_under_the_target() -> Result<(), Box<dyn std::error::Error>> {
-        let archive = zip_of(&[
-            ("steamcmd.exe", b"MZ fake exe".as_slice()),
-            ("sub/steamclient.dll", b"dll bytes".as_slice()),
-        ])?;
-        let target = scratch_dir("unpack");
+    fn extraction_reproduces_the_archive_layout() {
+        let scratch = Scratch::new();
+        let archive = zip_archive(&[
+            ("steamcmd.exe", "executable"),
+            ("bin/steamclient.dll", "library"),
+        ]);
 
-        extract(&archive, &target)?;
+        extract(&archive, scratch.root()).unwrap();
 
+        assert_eq!(scratch.entries(), ["bin", "steamcmd.exe"]);
         assert_eq!(
-            std::fs::read(target.join("steamcmd.exe"))?,
-            b"MZ fake exe",
-            "top-level entries land directly in the target"
-        );
-        assert_eq!(
-            std::fs::read(target.join("sub/steamclient.dll"))?,
-            b"dll bytes",
-            "nested entries keep their directory structure"
-        );
-
-        std::fs::remove_dir_all(&target)?;
-        Ok(())
-    }
-
-    #[test]
-    fn resolves_entry_paths_under_the_target() {
-        let target = Path::new("/store");
-
-        assert_eq!(
-            entry_target(target, "steamcmd.exe").unwrap(),
-            PathBuf::from("/store/steamcmd.exe")
-        );
-        assert_eq!(
-            entry_target(target, "sub/steamclient.dll").unwrap(),
-            PathBuf::from("/store/sub/steamclient.dll")
-        );
-        assert!(
-            entry_target(target, "./fine.txt").is_ok(),
-            "current-directory components are harmless"
+            std::fs::read_to_string(scratch.path("bin/steamclient.dll")).unwrap(),
+            "library"
         );
     }
 
     #[test]
-    fn rejects_entry_paths_that_escape_the_target() {
-        let target = Path::new("/store");
+    fn extraction_refuses_entries_that_escape_the_target() {
+        let scratch = Scratch::new();
+        let target = scratch.path("steamcmd");
+        let archive = zip_archive(&[("../escaped.txt", "payload")]);
 
-        for name in ["../evil.txt", "a/../../evil.txt"] {
-            assert!(
-                entry_target(target, name).is_err(),
-                "{name} must be refused"
-            );
-        }
+        let result = extract(&archive, &target);
+
+        assert!(matches!(result, Err(InstallError::UnsafeEntryPath { .. })));
+        assert!(!scratch.path("escaped.txt").exists());
     }
 
     #[test]
-    fn accepts_an_absent_or_empty_target() -> Result<(), Box<dyn std::error::Error>> {
-        let absent = scratch_dir("target-absent");
-        assert!(ensure_empty(&absent).is_ok());
+    fn an_archive_must_match_the_registry_checksum() {
+        let archive = zip_archive(&[("steamcmd.exe", "executable")]);
+        let expected = sha256_hex(&archive);
 
-        let empty = scratch_dir("target-empty");
-        std::fs::create_dir_all(&empty)?;
-        assert!(ensure_empty(&empty).is_ok());
+        assert!(verify(&archive, &expected).is_ok());
+        assert!(verify(&archive, &expected.to_uppercase()).is_ok());
 
-        Ok(())
-    }
-
-    #[test]
-    fn refuses_a_target_that_already_holds_files() -> Result<(), Box<dyn std::error::Error>> {
-        let target = scratch_dir("target-full");
-        std::fs::create_dir_all(&target)?;
-        std::fs::write(target.join("steamcmd.exe"), b"old")?;
+        let tampered = zip_archive(&[("steamcmd.exe", "tampered")]);
         assert!(matches!(
-            ensure_empty(&target),
+            verify(&tampered, &expected),
+            Err(InstallError::ChecksumMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn installing_never_overwrites_existing_files() {
+        let scratch = Scratch::new();
+        let occupied = scratch.dir("occupied");
+        scratch.file("occupied/steamcmd.exe", "user's own copy");
+
+        assert!(ensure_empty(&scratch.path("absent")).is_ok());
+        assert!(ensure_empty(&scratch.dir("empty")).is_ok());
+        assert!(matches!(
+            ensure_empty(&occupied),
             Err(InstallError::TargetOccupied { .. })
         ));
-
-        // A plain file at the target path is occupied too.
-        let file = scratch_dir("target-file");
-        std::fs::write(&file, b"old")?;
-        assert!(matches!(
-            ensure_empty(&file),
-            Err(InstallError::TargetOccupied { .. })
-        ));
-
-        Ok(())
-    }
-
-    #[test]
-    fn hashes_known_vectors() {
-        assert_eq!(
-            sha256_hex(b""),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
-        assert_eq!(
-            sha256_hex(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
     }
 }

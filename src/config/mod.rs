@@ -1,13 +1,16 @@
 //! User configuration, merged from the config file and environment variables.
 
+mod data_dir;
 mod env;
 mod file;
 mod setting;
 
+use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::platform;
 
+pub use data_dir::DataDir;
 pub use file::{ConfigFile, ConfigFileError, ConfigPath};
 pub use setting::{Origin, Setting};
 
@@ -16,6 +19,7 @@ pub use setting::{Origin, Setting};
 pub struct Config {
     steam_path: Option<Setting<PathBuf>>,
     steamcmd_path: Option<Setting<PathBuf>>,
+    data_dir: DataDir,
 }
 
 /// Whether the app is set up to run.
@@ -27,9 +31,28 @@ pub enum ConfigState {
     Ready(Config),
 }
 
+/// The ways resolving the configuration can fail.
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    /// The config file could not be located or read.
+    #[error(transparent)]
+    File(#[from] ConfigFileError),
+
+    /// This system reports no directory for local application data.
+    #[error("this system has no local data directory")]
+    NoDataDir,
+
+    /// The configured data directory cannot be made absolute.
+    #[error("the configured data directory is not a valid path")]
+    InvalidDataDir {
+        #[source]
+        source: io::Error,
+    },
+}
+
 impl Config {
     /// Reads the config file and merges the environment over it.
-    pub fn resolve() -> Result<ConfigState, ConfigFileError> {
+    pub fn resolve() -> Result<ConfigState, ConfigError> {
         let Some(file) = file::read()? else {
             return Ok(ConfigState::SetupRequired);
         };
@@ -37,6 +60,7 @@ impl Config {
         Ok(ConfigState::Ready(Config {
             steam_path: path_setting(file.steam_path, env::STEAM_DIR),
             steamcmd_path: path_setting(file.steamcmd_path, env::STEAMCMD),
+            data_dir: data_dir::resolve(file.data_path)?,
         }))
     }
 
@@ -48,6 +72,11 @@ impl Config {
     /// The configured steamcmd executable.
     pub fn steamcmd_path(&self) -> Option<&Setting<PathBuf>> {
         self.steamcmd_path.as_ref()
+    }
+
+    /// The directory holding the app's local data, such as the store.
+    pub fn data_dir(&self) -> &DataDir {
+        &self.data_dir
     }
 }
 

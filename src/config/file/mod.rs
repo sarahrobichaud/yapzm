@@ -20,6 +20,8 @@ pub(super) struct FileConfig {
     pub(super) steam_path: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) steamcmd_path: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) data_path: Option<PathBuf>,
 }
 
 /// The ways locating, reading, or creating the config file can fail.
