@@ -3,8 +3,9 @@
 use std::io::{Cursor, Write as _};
 use std::path::{Path, PathBuf};
 
-use crate::components::{Location, Provision, Provisioned, Source};
+use crate::components::{Component, Location, Provision, Provisioned, Source};
 use crate::store::{CopyProgress, Store};
+use crate::zomboid::Install;
 
 /// A temporary directory tree, deleted when dropped.
 pub struct Scratch {
@@ -88,6 +89,20 @@ pub fn provisioned_store(scratch: &Scratch) -> Store {
     match Store::provision(&scratch.dir("data")).expect("provisioning a scratch store") {
         Provisioned::Created(store) | Provisioned::AlreadyPresent(store) => store,
     }
+}
+
+/// Writes the files a runnable game needs into a directory, with a given JVM executable name, and returns the validated install.
+pub fn game_install(dir: &Path, java_executable: &str) -> Install {
+    let java = dir.join("jre64/bin").join(java_executable);
+    std::fs::create_dir_all(java.parent().unwrap()).expect("creating the bundled JVM directory");
+    std::fs::write(&java, "").expect("writing the bundled JVM");
+    std::fs::write(dir.join("projectzomboid.jar"), "").expect("writing the game jar");
+    Install::validate(&searched_location(dir)).expect("the written game files are a valid install")
+}
+
+/// Stores a runnable game version in a store.
+pub fn stored_game_version(store: &Store, version: &str) -> Install {
+    game_install(&store.game_version_dir(version), "java")
 }
 
 /// Copy progress that records what a copy reported.

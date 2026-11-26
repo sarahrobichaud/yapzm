@@ -15,15 +15,21 @@ const GAME_JAR: &str = "projectzomboid.jar";
 const JAVA_EXECUTABLES: &[&str] = &["jre64/bin/java.exe", "jre64/bin/java"];
 
 /// A runnable Project Zomboid game install.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Install {
     path: PathBuf,
+    java: PathBuf,
 }
 
 impl Install {
     /// The install's top-level directory.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// The bundled JVM executable the game runs on.
+    pub fn java(&self) -> &Path {
+        &self.java
     }
 }
 
@@ -44,18 +50,22 @@ impl Component for Install {
         if !location.path.join(GAME_JAR).is_file() {
             unmet.push(Requirement { name: GAME_JAR });
         }
-        if java_path(&location.path).is_none() {
+
+        let java = java_path(&location.path);
+
+        if java.is_none() {
             unmet.push(Requirement {
                 name: "bundled JVM (jre64/bin)",
             });
         }
 
-        if !unmet.is_empty() {
-            return Err(unmet);
+        match java {
+            Some(java) if unmet.is_empty() => Ok(Self {
+                path: location.path.clone(),
+                java,
+            }),
+            _ => Err(unmet),
         }
-        Ok(Self {
-            path: location.path.clone(),
-        })
     }
 }
 

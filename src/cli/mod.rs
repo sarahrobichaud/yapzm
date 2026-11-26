@@ -2,6 +2,7 @@
 
 mod health;
 mod instance;
+mod launch;
 mod mods;
 mod output;
 mod progress;
@@ -73,6 +74,12 @@ enum Commands {
         #[command(subcommand)]
         command: instance::InstanceCommand,
     },
+    /// Launch the game for an instance, using its own profile
+    Launch {
+        /// The instance to launch
+        #[arg(value_name = "INSTANCE")]
+        name: String,
+    },
 }
 
 /// Parses the command line and runs the requested command.
@@ -116,6 +123,7 @@ pub fn run() -> Result<()> {
         Commands::Mods { command } => mods::run(&input, command),
         Commands::Version { command } => version::run(&input, command),
         Commands::Instance { command } => instance::run(&input, command),
+        Commands::Launch { name } => launch::run(&input, &name),
     }
 }
 

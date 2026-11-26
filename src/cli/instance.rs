@@ -6,7 +6,7 @@ use clap::Subcommand;
 use crate::cli::CommandInput;
 use crate::cli::output::{plural, print_header};
 use crate::cli::prompt::pick;
-use crate::store::Store;
+use crate::store::{ListedInstance, Store};
 
 #[derive(Subcommand)]
 pub enum InstanceCommand {
@@ -93,14 +93,26 @@ fn list_instances(input: &CommandInput) -> Result<()> {
         return Ok(());
     }
 
-    for instance in &instances {
-        println!(
-            "[x] {} - version {}",
-            instance.name(),
-            instance.game_version()
-        );
+    for listed in &instances {
+        match listed {
+            ListedInstance::Usable(instance) => {
+                println!(
+                    "[x] {} - version {}",
+                    instance.name(),
+                    instance.game_version()
+                );
+            }
+            ListedInstance::Unusable { reason, .. } => {
+                println!(
+                    "[ ] {} - version {} ({reason})",
+                    listed.name(),
+                    listed.game_version()
+                );
+            }
+        }
         if input.invocation.is_verbose {
-            println!("    Location: {}", instance.root().display());
+            let root = input.context.store.instance_root(listed.name());
+            println!("    Location: {}", root.display());
         }
     }
 

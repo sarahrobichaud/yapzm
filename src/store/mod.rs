@@ -14,7 +14,7 @@ use crate::components::{
 
 pub use copy::CopyProgress;
 pub use game::GameCopyOutcome;
-pub use instance::Instance;
+pub use instance::{Instance, ListedInstance};
 pub use workshop::WorkshopCopyOutcome;
 
 /// The store directory's name inside the data directory.
@@ -73,9 +73,20 @@ pub enum StoreError {
     #[error("an instance named {0:?} already exists")]
     InstanceExists(String),
 
+    /// No instance with this name exists.
+    #[error("no instance named {0:?} exists")]
+    UnknownInstance(String),
+
     /// An instance asked for a game version the store does not hold.
     #[error("the game version {0:?} is not stored")]
     UnknownGameVersion(String),
+
+    /// A stored game version no longer has the files the game needs to run.
+    #[error("the stored game version {version:?} is missing: {}", describe_unmet(.unmet))]
+    UnusableGameVersion {
+        version: String,
+        unmet: Vec<Requirement>,
+    },
 
     /// An instance manifest could not be parsed.
     #[error("parsing {path}")]
@@ -118,6 +129,12 @@ impl Store {
     pub fn instance_dir(&self) -> PathBuf {
         self.root.join(INSTANCE_DIR)
     }
+}
+
+/// Lists unmet requirements for an error message.
+fn describe_unmet(unmet: &[Requirement]) -> String {
+    let names: Vec<&str> = unmet.iter().map(|requirement| requirement.name).collect();
+    names.join(", ")
 }
 
 /// Whether a name can name a store folder without escaping it.

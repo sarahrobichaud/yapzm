@@ -5,6 +5,8 @@ use std::path::Path;
 
 use super::copy::{CopyProgress, copy_into_place, tree_size};
 use super::{Store, StoreError, is_safe_folder_name};
+use crate::components::{Component, Location, Source};
+use crate::zomboid::Install;
 
 /// What copying a game install did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +21,24 @@ impl Store {
     /// Whether the store already holds a game version.
     pub fn holds_game_version(&self, version: &str) -> bool {
         is_safe_folder_name(version) && self.game_version_dir(version).is_dir()
+    }
+
+    /// A stored game version as a runnable install, proving its files are still usable.
+    pub fn game_install(&self, version: &str) -> Result<Install, StoreError> {
+
+        if !self.holds_game_version(version) {
+            return Err(StoreError::UnknownGameVersion(version.to_owned()));
+        }
+
+        let location = Location {
+            path: self.game_version_dir(version),
+            source: Source::Search,
+            metadata: (),
+        };
+        Install::validate(&location).map_err(|unmet| StoreError::UnusableGameVersion {
+            version: version.to_owned(),
+            unmet,
+        })
     }
 
     /// The game versions the store holds, oldest first.
