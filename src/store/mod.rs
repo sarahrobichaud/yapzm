@@ -1,7 +1,8 @@
-//! The local store holding the app's own copies of mods and game versions.
+//! The local store holding the app's own copies of mods and game versions, and the instances built from them.
 
 mod copy;
 mod game;
+mod instance;
 mod workshop;
 
 use std::io;
@@ -13,6 +14,7 @@ use crate::components::{
 
 pub use copy::CopyProgress;
 pub use game::GameCopyOutcome;
+pub use instance::Instance;
 pub use workshop::WorkshopCopyOutcome;
 
 /// The store directory's name inside the data directory.
@@ -24,10 +26,14 @@ const WORKSHOP_DIR: &str = "workshop";
 /// The directory holding game versions inside the store.
 const GAME_DIR: &str = "game";
 
+/// The directory holding instances inside the store.
+const INSTANCE_DIR: &str = "instance";
+
 /// The directories every store holds.
-const LAYOUT: [(&str, &str); 2] = [
+const LAYOUT: [(&str, &str); 3] = [
     (WORKSHOP_DIR, "workshop directory"),
     (GAME_DIR, "game directory"),
+    (INSTANCE_DIR, "instance directory"),
 ];
 
 /// A store on disk with its expected layout.
@@ -58,6 +64,26 @@ pub enum StoreError {
     /// A game version cannot safely name a folder in the store.
     #[error("the game version {0:?} cannot name a store folder")]
     InvalidVersion(String),
+
+    /// An instance name cannot safely name a folder in the store.
+    #[error("the instance name {0:?} cannot name a store folder")]
+    InvalidInstanceName(String),
+
+    /// An instance with this name already exists.
+    #[error("an instance named {0:?} already exists")]
+    InstanceExists(String),
+
+    /// An instance asked for a game version the store does not hold.
+    #[error("the game version {0:?} is not stored")]
+    UnknownGameVersion(String),
+
+    /// An instance manifest could not be parsed.
+    #[error("parsing {path}")]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
 }
 
 impl Store {
@@ -87,6 +113,20 @@ impl Store {
     pub fn game_version_dir(&self, version: &str) -> PathBuf {
         self.game_dir().join(version)
     }
+
+    /// The directory holding one folder per instance.
+    pub fn instance_dir(&self) -> PathBuf {
+        self.root.join(INSTANCE_DIR)
+    }
+}
+
+/// Whether a name can name a store folder without escaping it.
+fn is_safe_folder_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('.')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
 }
 
 impl Component for Store {
@@ -164,6 +204,7 @@ mod tests {
         ));
         assert!(scratch.path(".store/workshop").is_dir());
         assert!(scratch.path(".store/game").is_dir());
+        assert!(scratch.path(".store/instance").is_dir());
         assert!(matches!(
             Store::provision(scratch.root()),
             Ok(Provisioned::AlreadyPresent(_))

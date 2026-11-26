@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::path::Path;
 
 use super::copy::{CopyProgress, copy_into_place, tree_size};
-use super::{Store, StoreError};
+use super::{Store, StoreError, is_safe_folder_name};
 
 /// What copying a game install did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,7 +18,7 @@ pub enum GameCopyOutcome {
 impl Store {
     /// Whether the store already holds a game version.
     pub fn holds_game_version(&self, version: &str) -> bool {
-        is_safe_version_name(version) && self.game_version_dir(version).is_dir()
+        is_safe_folder_name(version) && self.game_version_dir(version).is_dir()
     }
 
     /// The game versions the store holds, oldest first.
@@ -35,7 +35,7 @@ impl Store {
             let Ok(name) = entry.file_name().into_string() else {
                 continue;
             };
-            if is_safe_version_name(&name) && entry.path().is_dir() {
+            if is_safe_folder_name(&name) && entry.path().is_dir() {
                 versions.push(name);
             }
         }
@@ -50,7 +50,7 @@ impl Store {
         version: &str,
         progress: &mut dyn CopyProgress,
     ) -> Result<GameCopyOutcome, StoreError> {
-        if !is_safe_version_name(version) {
+        if !is_safe_folder_name(version) {
             return Err(StoreError::InvalidVersion(version.to_owned()));
         }
         if self.holds_game_version(version) {
@@ -70,15 +70,6 @@ impl Store {
             version: version.to_owned(),
         })
     }
-}
-
-/// Whether a reported version can name a store folder without escaping it.
-fn is_safe_version_name(version: &str) -> bool {
-    !version.is_empty()
-        && !version.starts_with('.')
-        && version
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
 }
 
 /// Orders versions by their dot-separated parts, comparing numeric parts by value.

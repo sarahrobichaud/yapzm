@@ -1,9 +1,11 @@
 //! Command-line parsing and dispatch.
 
 mod health;
+mod instance;
 mod mods;
 mod output;
 mod progress;
+mod prompt;
 mod steamcmd;
 mod version;
 
@@ -66,6 +68,11 @@ enum Commands {
         #[command(subcommand)]
         command: version::VersionCommand,
     },
+    /// Create and list instances built from stored game versions
+    Instance {
+        #[command(subcommand)]
+        command: instance::InstanceCommand,
+    },
 }
 
 /// Parses the command line and runs the requested command.
@@ -108,6 +115,7 @@ pub fn run() -> Result<()> {
         Commands::Steamcmd { command } => steamcmd::run(&input, command),
         Commands::Mods { command } => mods::run(&input, command),
         Commands::Version { command } => version::run(&input, command),
+        Commands::Instance { command } => instance::run(&input, command),
     }
 }
 
